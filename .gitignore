@@ -1,5 +1,6 @@
 data/
 assets/
+models/
 !/**/.gitkeep
 
 # Prompt flow
