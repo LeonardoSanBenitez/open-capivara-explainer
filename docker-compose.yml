@@ -1,0 +1,16 @@
+version: "3.5"
+services:
+  notebooks:
+    container_name: explainer-notebooks
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: ["jupyter", "notebook", "--port=8888", "--no-browser", "--ip=0.0.0.0", "--allow-root", "--NotebookApp.token=${NOTEBOOK_TOKEN}"]
+    volumes:
+      - ./:/src
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/src
+    ports:
+       - 8888:8888
