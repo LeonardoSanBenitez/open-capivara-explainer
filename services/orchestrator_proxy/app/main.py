@@ -4,6 +4,6 @@ from libs.utils import setup_loggers
 
 app = FastAPI(debug=True)
 
-app.include_router(openai_facade.router, prefix="/openai", tags=["openai"])
-app.include_router(context_managenent.router, prefix="/openai", tags=["management"])
+app.include_router(openai_facade.router, prefix="/v1", tags=["openai"])
+app.include_router(context_managenent.router, prefix="/v1", tags=["management"])
 setup_loggers()
