@@ -1,0 +1,7 @@
+# This requirements are only needed during development
+python-dotenv
+mypy
+pycodestyle
+pytest
+pytest-asyncio
+httpx

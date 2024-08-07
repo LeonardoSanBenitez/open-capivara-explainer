@@ -1,5 +1,0 @@
-python-dotenv
-mypy
-pycodestyle
-pytest
-pytest-asyncio

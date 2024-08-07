@@ -4,7 +4,7 @@ services:
     container_name: explainer-notebooks
     build: 
       context: .
-      dockerfile: Dockerfile
+      dockerfile: notebooks/Dockerfile
     command: ["jupyter", "notebook", "--port=8888", "--no-browser", "--ip=0.0.0.0", "--allow-root", "--NotebookApp.token=${NOTEBOOK_TOKEN}"]
     volumes:
       - ./:/src
@@ -18,10 +18,28 @@ services:
 
   llm-server:
     # Docs: https://github.com/ggerganov/llama.cpp/tree/master/examples/server
+    container_name: explainer-llm-server
     image: ghcr.io/ggerganov/llama.cpp:server
-    ports:
-      - "8080:8080"
+    command: ["--hf-repo", "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF", "--hf-file", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf", "--host", "0.0.0.0", "--port", "8080"]
     volumes:
       - ./models/.cache:/root/.cache
       - ./models:/models
-    command: ["--hf-repo", "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF", "--hf-file", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+
+
+  orchestrator-proxy:
+    container_name: explainer-orchestrator-proxy
+    build: 
+      context: .
+      dockerfile: ./services/orchestrator_proxy/Dockerfile
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
+    volumes:
+      - ./services/orchestrator_proxy/app:/src/app
+      - ./libs:/src/libs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/src
+    ports:
+      - 8000:80

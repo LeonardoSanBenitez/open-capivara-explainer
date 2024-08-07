@@ -19,8 +19,8 @@ RUN apt-get update && \
 # Application dependencies
 RUN apt-get update
 RUN pip3 install --upgrade pip
-COPY requirements.dev.txt /tmp/
-COPY requirements.txt /tmp/
+COPY libs/requirements.dev.txt /tmp/
+COPY libs/requirements.txt /tmp/
 RUN pip3 install --requirement /tmp/requirements.dev.txt
 RUN pip3 install --requirement /tmp/requirements.txt
 

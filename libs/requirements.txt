@@ -9,13 +9,15 @@ transformers~=4.34
 torch~=2.4
 accelerate~=0.33
 openai~=1.39
+#langchain==0.0.305 
+#azure-search-documents==11.4.0b8
 
 ###################
 # Data
 ###################
 pandas~=2.2
 numpy~=1.26
-#pypdf~=3.12
+pypdf~=3.12
 matplotlib
 #pyspark~=3.5
 #deltalake~=0.18  # For standalone delta (without spark)
@@ -28,3 +30,4 @@ dateparser
 pydantic~=2.8
 #ffmpeg-python~=0.2
 #imageio[ffmpeg]~=2.4
+#azure-identity==1.15.0
