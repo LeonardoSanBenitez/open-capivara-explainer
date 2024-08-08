@@ -1,7 +1,7 @@
-uvicorn[standard]~=0.24
-gunicorn~=21.2
-fastapi~=0.104
-pydantic~=2.8
+uvicorn[standard]
+gunicorn
+fastapi
+pydantic
 python-multipart
 aiofiles
 sse-starlette
