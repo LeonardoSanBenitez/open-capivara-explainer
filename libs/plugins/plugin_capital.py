@@ -219,7 +219,7 @@ country_to_capital = {
 }
 
 
-class PluginCapitals(KernelBaseModel):
+class PluginCapital(KernelBaseModel):
     @kernel_function(
         description="Returns the name of the capital of a country.",
         name="get_capital",
@@ -250,8 +250,8 @@ class PluginCapitals(KernelBaseModel):
 
 # Usage
 '''
-from libs.plugins.plugin_capital import PluginCapitals
-from libs.plugin_converter.semantic_kernel_v0 import make_context
-plugin = PluginCapitals()
+from libs.plugins.plugin_capital import PluginCapital
+from libs.plugin_converter.semantic_kernel_v0_to_openai_tool import make_context
+plugin = PluginCapital()
 print(plugin.get_capital(make_context({'country': 'Brazil'})))
 '''

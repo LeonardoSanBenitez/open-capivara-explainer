@@ -24,6 +24,7 @@ numpy~=1.26
 matplotlib
 #pyspark~=3.5
 #deltalake~=0.18  # For standalone delta (without spark)
+lxml
 
 ###################
 # General

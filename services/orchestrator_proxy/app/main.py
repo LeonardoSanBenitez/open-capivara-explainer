@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.routers import openai_facade, context_managenent
-from libs.utils import setup_loggers
+from libs.utils.logger import setup_loggers
 
 app = FastAPI(debug=True)
 
