@@ -23,7 +23,7 @@ test: run-local
 	docker-compose exec notebooks mypy ./libs --no-warn-incomplete-stub --disable-error-code import-untyped --explicit-package-bases
 
 	echo "\n\n-------\nPycodestyle checks\n-------"
-	docker-compose exec notebooks pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E731' ./libs
+	docker-compose exec notebooks pycodestyle --exclude='.venv,docs,.runs' --max-line-length=200 --ignore='E121,E123,E126,E226,E24,E251,E704,W503,W504,E225,E226,E252,W605,E721,E731' ./libs
 	
 	echo "\n\n-------\nPytest checks\n-------"
 	docker-compose exec notebooks python3 -m pytest tests

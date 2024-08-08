@@ -13,37 +13,41 @@ have a field `Type`. Its rough distribution is:
 name                    | count     | example
 ------------------------|-----------|--------
 account	                | 374       | {"$id":"3","Name":"floriano.peixoto","UPNSuffix":"exercito.com","IsDomainJoined":true,"DisplayName":"floriano.peixoto@exercito.com","Type":"account"}
-url	                    | 234       | {"$id":"2","HostName":"desktop-9ir4nen","OSFamily":"Windows","OSVersion":"22H2","Type":"host","MdatpDeviceId":"94a845f157d61c50793c7988c955d5aef29ec5a7","FQDN":"desktop-9ir4nen","AadDeviceId":"0280296e-8c73-4f5c-bf61-58a4b5ad916b","RiskScore":"None","HealthStatus":"Active","LastSeen":"2023-05-31T06:06:48.2212819Z","LastExternalIpAddress":"46.5.72.186","LastIpAddress":"192.168.2.236","AvStatus":"NotSupported","OnboardingStatus":"Onboarded","LoggedOnUsers":[{"AccountName":"JürgenHaßlauer","DomainName":"AzureAD"}]}
-host	                | 212       | 
-process	                | 179       | 
-ip	                    | 164       | 
-file	                | 60        | 
-cloud-application	    | 39        | 
-mailbox	                | 27        | 
-mailMessage	            | 24        | 
-mailCluster	            | 21        | 
-azure-resource	        | 12        | 
-cloud-logon-session	    | 5         | 
-cloud-logon-request	    | 5         | 
-network-connection	    | 3         | 
-dns	                    | 3         | 
+url	                    | 234       | {"$id":"2","HostName":"desktop-9ir4nen","OSFamily":"Windows","OSVersion":"22H2","Type":"host","MdatpDeviceId":"94a845f157d61c50793c7988c955d5aef29ec5a7","FQDN":"desktop-9ir4nen","AadDeviceId":"0280296e-8c73-4f5c-bf61-58a4b5ad916b","RiskScore":"None","HealthStatus":"Active","LastSeen":"2023-05-31T06:06:48.2212819Z","LastExternalIpAddress":"46.5.72.186","LastIpAddress":"192.168.2.236","AvStatus":"NotSupported","OnboardingStatus":"Onboarded","LoggedOnUsers":[{"AccountName":"JürgenHaßlauer","DomainName":"AzureAD"}]}  # noqa
+host	                | 212       |
+process	                | 179       |
+ip	                    | 164       |
+file	                | 60        |
+cloud-application	    | 39        |
+mailbox	                | 27        |
+mailMessage	            | 24        |
+mailCluster	            | 21        |
+azure-resource	        | 12        |
+cloud-logon-session	    | 5         |
+cloud-logon-request	    | 5         |
+network-connection	    | 3         |
+dns	                    | 3         |
 
 
 can make references to each other, by using for example `{"$ref":"2"}` as value
 
 '''
 
+
 ####################
 class Signature(BaseModel):
     # All fields should be an array of floats
     pass
 
+
 class SignatureV0(Signature):
     sentence_transformer_distiluse_base_multilingual_cased_v1: List[float]
+
 
 class SignatureV1(Signature):
     sentence_transformers_clip_ViT_B32_multilingual_v1: List[float]
     is_outage: List[float]
+
 
 class Signatures(BaseModel):
     # Key denotates the version/name of the signature
@@ -52,12 +56,14 @@ class Signatures(BaseModel):
     v0: Optional[SignatureV0] = None
     v1: Optional[SignatureV1] = None
 
+
 ####################
 
 class Decision(BaseModel):
-    passed: bool = False # Passed == True means that it is a FalsePositive
+    passed: bool = False  # Passed == True means that it is a FalsePositive
     classification: Optional[Literal['BenignPositive', 'FalsePositive', 'TruePositive', 'Undetermined']] = None
     details: str = ''
+
 
 class Alert(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -68,9 +74,9 @@ class Alert(BaseModel):
     state: Optional[Literal['new', 'analyzing', 'analysed', 'closed']] = 'new'
     version: Optional[str] = None
     source: Optional[str] = 'sentinel'
-    
+
     groups: List[str] = []
-    results: list = []#TODO
+    results: list = []  # TODO
     decision: Decision = Field(default_factory=Decision)
     execution_time: Optional[float] = None
     signatures: Optional[Signatures] = None
@@ -116,9 +122,10 @@ class Alert(BaseModel):
     incident_number: Optional[int] = None
     related_analytic_rule_ids: list = []
 
-class CriteriaResult(BaseModel):   
+
+class CriteriaResult(BaseModel):
     criteria_name: str
     worked: bool
-    passed: bool #True = indicates a false positive
+    passed: bool  # True = indicates a false positive
     weight: int
     details: str

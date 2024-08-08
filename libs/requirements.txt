@@ -12,12 +12,15 @@ openai~=1.39
 #langchain==0.0.305 
 #azure-search-documents==11.4.0b8
 
+semantic-kernel==0.5.0.dev0 # it says it requires `openai==1.0`, but it worked
+
+
 ###################
 # Data
 ###################
 pandas~=2.2
 numpy~=1.26
-pypdf~=3.12
+#pypdf~=3.12
 matplotlib
 #pyspark~=3.5
 #deltalake~=0.18  # For standalone delta (without spark)
