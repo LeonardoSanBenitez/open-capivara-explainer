@@ -2,7 +2,7 @@ import pytest
 from semantic_kernel import ContextVariables
 import semantic_kernel as sk
 from libs.plugins.plugin_capital import PluginCapital
-from libs.plugin_converter.semantic_kernel_v0_to_openai_tool import make_context
+from libs.plugin_converter.semantic_kernel_v0_to_openai_function import make_context
 
 
 def test_plugin_alone():

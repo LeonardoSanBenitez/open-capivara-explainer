@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from libs.utils.json_resilient import json_loads_resilient
 from libs.utils.html import convert_markdown_to_html
-from libs.plugin_converter.builtin_plugins import answer_definition_text
 
 
 class Citation(BaseModel):

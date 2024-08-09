@@ -251,7 +251,7 @@ class PluginCapital(KernelBaseModel):
 # Usage
 '''
 from libs.plugins.plugin_capital import PluginCapital
-from libs.plugin_converter.semantic_kernel_v0_to_openai_tool import make_context
+from libs.plugin_converter.semantic_kernel_v0_to_openai_function import make_context
 plugin = PluginCapital()
 print(plugin.get_capital(make_context({'country': 'Brazil'})))
 '''

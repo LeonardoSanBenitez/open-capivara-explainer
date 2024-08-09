@@ -54,6 +54,9 @@ class AutoGPT:
     secondary_channels: List[SecondaryChannelDefinition] = []
     answer_validator: Callable[[dict], ValidatedAnswer]
 
+    # TODO
+    # if pydantic, set these as init=False
+    # https://docs.pydantic.dev/latest/concepts/fields/#dataclass-constraints
     current_step: int = 1
     definitions_active: List[dict]  # Only the ones the model is allowed to call in the current step
     citations: List[Citation] = []

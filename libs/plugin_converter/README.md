@@ -6,7 +6,7 @@ Supported libraries:
 
 
 Supported conversions:
-* Semantic Kernel V0 -> OpenAI tool. Function `semantic_kernel_v0_to_openai_tool.generate_definitions_from_sk_plugins`.
+* Semantic Kernel V0 -> OpenAI tool. Function `semantic_kernel_v0_to_openai_function.generate_definitions`.
 * Semantic Kernel V0 -> OpenAI Assistant (work in progress)
 
 

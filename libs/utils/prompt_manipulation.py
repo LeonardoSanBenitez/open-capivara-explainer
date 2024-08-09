@@ -1,6 +1,23 @@
 from typing import List, Tuple, Union, Dict, Optional
 import tiktoken
 import pandas as pd
+from pydantic import BaseModel
+
+
+###############################
+# Models
+class ParametersOpenaiFunction(BaseModel):
+    type: str
+    properties: dict
+    required: List[str]
+
+
+class DefinitionOpenaiFunction(BaseModel):
+    name: str
+    description: str
+    parameters: ParametersOpenaiFunction
+
+###############################
 
 
 def count_message_tokens(

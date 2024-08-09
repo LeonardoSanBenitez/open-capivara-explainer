@@ -15,7 +15,7 @@ from libs.utils.json_resilient import json_loads_resilient
 from libs.utils.logger import get_logger
 from libs.utils.html import convert_markdown_to_html
 from libs.plugin_converter.builtin_plugins import answer_definition_text
-
+from libs.utils.prompt_manipulation import ParametersOpenaiFunction, DefinitionOpenaiFunction
 ###############################
 # Version check
 import importlib.metadata
@@ -34,6 +34,8 @@ if installed_major_version != required_major_version:
 logger = get_logger(f'libs.converter.{os.path.basename(__file__)}', level = logging.WARNING)
 
 
+###############################
+# Some helpers
 def make_context(variables: dict):
     '''
     Used to invoke a kernel function outside a kernel
@@ -77,8 +79,10 @@ def validate_param_string(context: KernelContext, name: str, required: bool = Tr
     assert type(value) == str
     return value
 
+###############################
 
-def is_sk_function(func) -> bool:
+
+def _is_sk_function(func) -> bool:
     decorator_sk = getattr(func, "__kernel_function__", None)
     if (decorator_sk is not None) and (decorator_sk is True):
         return True
@@ -86,7 +90,7 @@ def is_sk_function(func) -> bool:
         return False
 
 
-def sk_function_get_parameters(func) -> List[dict]:
+def _sk_function_get_parameters(func) -> List[dict]:
     # TODO:
     # Some plugins have their input defined with the method `__kernel_function_input_description__`
     # This case is not covered
@@ -94,7 +98,7 @@ def sk_function_get_parameters(func) -> List[dict]:
     return getattr(func, "__kernel_function_context_parameters__", [])
 
 
-def create_wrapper_function(function_to_be_wrapped: Callable) -> Callable:
+def _create_wrapper_function(function_to_be_wrapped: Callable) -> Callable:
     def temp(**kwargs) -> str:
         assert type(kwargs) == dict
         try:
@@ -112,30 +116,30 @@ def create_wrapper_function(function_to_be_wrapped: Callable) -> Callable:
     return temp
 
 
-def generate_functions_from_sk_plugins(plugins: List[Tuple[KernelBaseModel, str]]) -> Dict[str, Callable]:
-    '''
-    :param plugins: list of plugins to be used; each element is a tuple of plugin instance and its name
-    '''
-    functions = {}
-    for plugin_instance, plugin_name in plugins:
-        for method_name, method in inspect.getmembers(plugin_instance, inspect.ismethod):
-            if is_sk_function(method):
-                logger.info(f"Found kernel function {method_name} in plugin {plugin_name}")  # TODO: why is this not printed?
-                functions[plugin_name + '_' + method.__kernel_function_name__] = create_wrapper_function(function_to_be_wrapped = method)  # type: ignore
-    return functions
-
-
-def generate_param_definition(param: dict) -> dict:
+def _generate_param_definition(param: dict) -> dict:
     if param['type'] == 'array':
         return {'type': param['type'], 'items': {'type': 'string'}, 'description': param['description'], 'default': param['default_value']}
     else:
         return {'type': param['type'], 'description': param['description'], 'default': param['default_value']}
 
 
-def generate_definitions_from_sk_plugins(
+def generate_callables(plugins: List[Tuple[KernelBaseModel, str]]) -> Dict[str, Callable]:
+    '''
+    :param plugins: list of plugins to be used; each element is a tuple of plugin instance and its name
+    '''
+    functions = {}
+    for plugin_instance, plugin_name in plugins:
+        for method_name, method in inspect.getmembers(plugin_instance, inspect.ismethod):
+            if _is_sk_function(method):
+                logger.info(f"Found kernel function {method_name} in plugin {plugin_name}")  # TODO: why is this not printed?
+                functions[plugin_name + '_' + method.__kernel_function_name__] = _create_wrapper_function(function_to_be_wrapped = method)  # type: ignore
+    return functions
+
+
+def generate_definitions(
     plugins: List[Tuple[KernelBaseModel, str]],
-    answer_definition: Optional[dict] = answer_definition_text,
-) -> List[dict]:
+    answer_definition: Optional[DefinitionOpenaiFunction] = answer_definition_text,
+) -> List[DefinitionOpenaiFunction]:
     '''
     :param plugins: list of plugins to be used; each element is a tuple of plugin instance and its name
     :param answer_definition: should be chosen to maximize clarity for the LLM.
@@ -154,26 +158,21 @@ def generate_definitions_from_sk_plugins(
 
     for plugin_instance, plugin_name in plugins:
         for method_name, method in inspect.getmembers(plugin_instance, inspect.ismethod):
-            if is_sk_function(method):
+            if _is_sk_function(method):
                 logger.info(f"Found kernel function {method_name} in plugin {plugin_name}")
                 function_name = plugin_name + '_' + method.__kernel_function_name__  # type: ignore
-                parameters = sk_function_get_parameters(method)
-                definitions.append({
+                parameters = _sk_function_get_parameters(method)
+                definitions.append(DefinitionOpenaiFunction(**{
                     "name": function_name,
                     "description": method.__kernel_function_description__,  # type: ignore
                     "parameters": {
                         "type": "object",
-                        "properties": {param['name']: generate_param_definition(param) for param in parameters},
+                        "properties": {param['name']: _generate_param_definition(param) for param in parameters},
                         "required": [param['name'] for param in parameters if param['required']],
                     },
-                })
+                }))
 
     if answer_definition is not None:
-        assert 'name' in answer_definition, "The 'name' key is missing from the 'answer' function."
-        assert 'description' in answer_definition, "The 'description' key is missing from the 'answer' function."
-        assert 'parameters' in answer_definition, "The 'parameters' key is missing from the 'answer' function."
-        assert type(answer_definition['parameters']) == dict, "The 'parameters' key must be a dictionary."
-
         definitions.append(answer_definition)
 
     return definitions
