@@ -2,7 +2,6 @@ from pydantic import BaseModel
 from libs.utils.prompt_manipulation import DefinitionOpenaiFunction, ParametersOpenaiFunction
 
 
-
 answer_definition_text = DefinitionOpenaiFunction(
     name='answer',
     description="Send response back to the user. Show all your results here, this is the only thing that the user will see."

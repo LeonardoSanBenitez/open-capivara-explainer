@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union, Dict, Optional
+from typing import List, Tuple, Union, Dict, Optional, Literal
 import tiktoken
 import pandas as pd
 from pydantic import BaseModel
@@ -10,12 +10,20 @@ class ParametersOpenaiFunction(BaseModel):
     type: str
     properties: dict
     required: List[str]
+    additionalProperties: bool = False
 
 
 class DefinitionOpenaiFunction(BaseModel):
     name: str
     description: str
     parameters: ParametersOpenaiFunction
+    strict: bool = True
+
+
+class DefinitionOpenaiTool(BaseModel):
+    type: Literal['function']
+    function: DefinitionOpenaiFunction
+
 
 ###############################
 
