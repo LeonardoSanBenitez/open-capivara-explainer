@@ -6,9 +6,11 @@ Supported libraries:
 
 
 Supported conversions:
-* Semantic Kernel V0 -> OpenAI tool. Function `semantic_kernel_v0_to_openai_function.generate_definitions`.
+* Semantic Kernel V0 -> OpenAI functions. Function `semantic_kernel_v0_to_openai_function.generate_definitions`.
 * Semantic Kernel V0 -> OpenAI Assistant (work in progress)
+* OpenAI functions -> OpenAI tool
 
+Convertions are designed to be as lossless as possible, so you can chain, convert back-and-foward, etc
 
 
 # Limitations

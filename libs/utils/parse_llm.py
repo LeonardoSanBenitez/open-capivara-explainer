@@ -6,12 +6,38 @@ import logging
 import os
 from libs.utils.logger import get_logger
 from libs.utils.json_resilient import json_loads_resilient
+from libs.utils.connector_llm import ChatCompletionMessageResponse, OpenaiFunctionCall
 
 
 logger = get_logger(f'libs.utils.{os.path.basename(__file__)}', level = logging.WARNING)
 
 
-def detect_function_call(response: dict) -> Tuple[bool, Optional[str], Optional[Dict]]:
+def detect_function_call(response: ChatCompletionMessageResponse) -> Tuple[bool, Optional[str], Optional[Dict]]:
+    '''
+    @return is_function_calling: bool
+    @return function_name: Optional[str]
+    @return function_arguments: Optional[Dict]
+    '''
+    if response.tool_calls is not None and len(response.tool_calls) > 0:
+        logger.info('Function calling detected by: native API feature')
+        assert response.tool_calls[0].function is not None
+        function_call: OpenaiFunctionCall = response.tool_calls[0].function
+        worked, function_arguments = json_loads_resilient(function_call.arguments)
+        if not worked:
+            logger.warning(f"Could not parse, error: {function_arguments}")
+            return False, None, None
+        else:
+            assert type(function_arguments) == dict
+            return True, function_call.name, function_arguments
+    elif response.content is not None and response.content != '':
+        logger.info('Function calling detected by: custom implementation')
+        # TODO
+        return False, None, None
+    else:
+        return False, None, None
+
+
+def detect_function_call_unstructured(response: dict) -> Tuple[bool, Optional[str], Optional[Dict]]:
     '''
     @return is_function_calling: bool
     @return function_name: Optional[str]

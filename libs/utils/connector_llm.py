@@ -1,4 +1,3 @@
-# type: ignore
 from typing import Literal, List, Optional, AsyncGenerator, Generator, Awaitable
 from pydantic import BaseModel, ConfigDict, computed_field
 from functools import cached_property
@@ -78,8 +77,8 @@ class TextCompletion(BaseModel):
 
 
 class ChatCompletionMessage(BaseModel):
-    content: str
     role: str = 'assistant'
+    content: str
 
 
 #############################################
@@ -154,7 +153,7 @@ class ConnectorLLM(BaseModel, ABC):
         pass
 
     @abstractmethod
-    async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Awaitable[ChatCompletion]:
+    async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
         pass
 
     @abstractmethod
@@ -184,7 +183,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
     hyperparameters: HyperparametersOpenAI
     credentials: CredentialsOpenAI
 
-    @computed_field
+    @computed_field  # type: ignore
     @cached_property
     def response_format(self) -> dict:
         if self.capabilities.response_json_only:
@@ -192,7 +191,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
         else:
             return {"type": "text"}
 
-    @computed_field
+    @computed_field  # type: ignore
     @cached_property
     def client(self) -> openai.OpenAI:
         return openai.OpenAI(
@@ -200,7 +199,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
             api_key=self.credentials.api_key,
         )
 
-    @computed_field
+    @computed_field  # type: ignore
     @cached_property
     def client_async(self) -> openai.AsyncOpenAI:
         return openai.AsyncOpenAI(
@@ -225,7 +224,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
         chat_completion = self.client.chat.completions.create(stream=False, **self._chat_completion_assemble_params(messages, tool_definitions))
         return ChatCompletion(**chat_completion.dict())
 
-    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:
+    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:  # type: ignore
         chat_completion_stream = self.client.chat.completions.create(stream=True, **self._chat_completion_assemble_params(messages, tool_definitions))
 
         for chunk in chat_completion_stream:
@@ -234,21 +233,21 @@ class ConnectorLLMOpenAI(ConnectorLLM):
                 messages_out = [{**m, 'role': m.get('role') or 'assistant'} for m in messages_out]
                 messages_out = [{**m, 'content': m.get('content') or ''} for m in messages_out]
                 choices: List[dict] = [{'message': m} for m in messages_out]
-                yield ChatCompletionPart(choices=choices)
+                yield ChatCompletionPart(choices=choices)  # type: ignore
 
-    async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Awaitable[ChatCompletion]:
+    async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
         chat_completion = await self.client_async.chat.completions.create(stream=False, **self._chat_completion_assemble_params(messages, tool_definitions))
-        return ChatCompletion(**chat_completion.dict())
+        return ChatCompletion(**chat_completion.dict())  # type: ignore
 
-    async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletionPart, None]:
+    async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletionPart, None]:  # type: ignore
         chat_completion_stream = await self.client_async.chat.completions.create(stream=True, **self._chat_completion_assemble_params(messages, tool_definitions))
         async for chunk in chat_completion_stream:
             if len(chunk.choices) > 0:
-                messages: List[dict] = [c.delta.dict() for c in chunk.choices]
-                messages = [{**m, 'role': m.get('role') or 'assistant'} for m in messages]
-                messages = [{**m, 'content': m.get('content') or ''} for m in messages]
+                messages: List[dict] = [c.delta.dict() for c in chunk.choices]  # type: ignore
+                messages = [{**m, 'role': m.get('role') or 'assistant'} for m in messages]  # type: ignore
+                messages = [{**m, 'content': m.get('content') or ''} for m in messages]  # type: ignore
                 choices: List[dict] = [{'message': m} for m in messages]
-                yield ChatCompletionPart(choices=choices)
+                yield ChatCompletionPart(choices=choices)  # type: ignore
 
     def text_completion(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
         raise NotImplementedError()
@@ -264,7 +263,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
 
 
 class ConnectorLLMAzureOpenAI(ConnectorLLMOpenAI):
-    @computed_field
+    @computed_field  # type: ignore
     @cached_property
     def client(self) -> openai.AzureOpenAI:
         return openai.AzureOpenAI(
@@ -273,7 +272,7 @@ class ConnectorLLMAzureOpenAI(ConnectorLLMOpenAI):
             api_version="2024-05-01-preview",
         )
 
-    @computed_field
+    @computed_field  # type: ignore
     @cached_property
     def client_async(self) -> openai.AsyncAzureOpenAI:
         return openai.AsyncAzureOpenAI(
@@ -284,7 +283,7 @@ class ConnectorLLMAzureOpenAI(ConnectorLLMOpenAI):
 
 
 class ConnectorLLMLlamaCPP(ConnectorLLMOpenAI):
-    hyperparameters: HyperparametersLlamaCPP
+    hyperparameters: HyperparametersLlamaCPP  # type: ignore
 
 
 def create_connector_llm(
@@ -309,7 +308,7 @@ def create_connector_llm(
             modelname=modelname,
             capabilities=capabilities,
             hyperparameters=HyperparametersOpenAI(**hyperparameters),
-            credentials=credentials,
+            credentials=credentials,  # type: ignore
         )
     elif provider == 'azure_openai':
         capabilities = Capabilities()
@@ -321,7 +320,7 @@ def create_connector_llm(
             modelname=modelname,
             capabilities=capabilities,
             hyperparameters=HyperparametersOpenAI(**hyperparameters),
-            credentials=credentials,
+            credentials=credentials,  # type: ignore
         )
     elif provider == 'llama_cpp':
         capabilities = Capabilities(local=True)
@@ -329,7 +328,7 @@ def create_connector_llm(
             modelname=modelname,
             capabilities=capabilities,
             hyperparameters=HyperparametersLlamaCPP(**hyperparameters),
-            credentials=credentials,
+            credentials=credentials,  # type: ignore
         )
     else:
         raise ValueError(f"Unknown provider: {provider}")

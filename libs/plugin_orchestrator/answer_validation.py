@@ -26,6 +26,12 @@ class ValidatedAnswer(BaseModel):
     visualizations: list[Visualization] = []
 
 
+class ValidatedAnswerPart(BaseModel):
+    answer: Optional[str] = None
+    citations: Optional[list[Citation]] = None
+    visualizations: Optional[list[Visualization]] = None
+
+
 def default_answer_validator(result: dict) -> ValidatedAnswer:
     assert type(result) == dict, f"Expected the agent to return a dict, got {type(result)}"
     if ('text' in result) and (type(result['text']) == str):
