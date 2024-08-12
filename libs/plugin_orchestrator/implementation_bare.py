@@ -13,16 +13,23 @@ Do not contain separate steps for reasoninig and actionCall (both are done in th
 
 
 class OrchestratorBare(OrchestratorWithTool):
+    '''
+    For the LLMs that do not support function calling, and you have to explain every detail of the syntax.
+
+    Do not contain separate steps for reasoninig and actionCall (both are done in the same prompt, sequentially).
+    '''
     @model_validator(mode='after')
     def _model_validator(self):
         self._tool_definitions_active = self.tool_definitions
 
         self._prompt_orchestrator_triggering = (
-            f"Determine which next function to use next.\n"
+            f"Now call a function with the JSON syntax explained.\n"
+            f"Do not do anything else, just call a function.\n"
             f"If you have enough information to answer the question, call the '{self.answer_function_name}' function and pass the answer as a parameter.\n"
             f"This is very important: the argument for the '{self.answer_function_name}' function is the only thing the user will see, all your results should be shown here.\n"
             f"Call only one function per message.\n"
             f"Do not call the same function with the same arguments more than once, their outputs are deterministic."
+            f"Call a function with the JSON syntax."
         )
 
     @computed_field  # type: ignore
@@ -44,7 +51,7 @@ class OrchestratorBare(OrchestratorWithTool):
                 f'''The JSON necessary to call a function contains one key named "thought" (its value have type string, with one short sentence descring why you should take this action), one key named "action_name" (its value have type string, with the name of the function to call), and one key named "args" (its value have type object, with the arguments to pass to the function).\n'''  # noqa: E501
                 f'''The JSON keys "thought", "action_name" and "args" should be written in this order.\n'''
                 f'''The JSON keys "thought", "action_name" and "args" should always be present.\n'''
-                '''Example (just to demonstrate the syntax, this example function does not exist): {"thought": "The first step to answer the user question is to use my example function", "action_name": "my_example_function", "args": {"my_param": "something"}}\n'''  # noqa: E501
+                '''Example (just to demonstrate the syntax, this example function does not exist, do not call it): {"thought": "The first step to answer the user question is to use my example function", "action_name": "my_example_function", "args": {"my_param": "something"}}\n'''  # noqa: E501
                 f"Remember to call the function only once per message.\n"
                 f"Do not answer with anything that is not a json, do not add any extra comment, follow exactly the syntax provided.\n"
                 f"Always use the tools, do not answer without the tools.\n"
@@ -118,8 +125,8 @@ class OrchestratorBare(OrchestratorWithTool):
             for p in properties:
                 str_type = f"Type: {properties[p]['type']}"
                 str_required = f"Required: {'yes' if p in definition.function.parameters.required else 'no'}"
-                str_default = f"Default: {properties[p]['default']}"
-                args.append(f"{p} ({properties[p]['description']} {str_type}. {str_required}{'. '+str_default if p not in definition.function.parameters.required else ''})")
+                str_default = f". Default: {properties[p]['default']}" if p not in definition.function.parameters.required else ''
+                args.append(f"{p} ({properties[p]['description']} {str_type}. {str_required}{str_default})")
 
             function_description = f"{definition.function.name}: {definition.function.description}.\n  Arguments: {', '.join(args)}"
             function_descriptions += f"{i}. {function_description}\n"
@@ -156,6 +163,7 @@ class OrchestratorBare(OrchestratorWithTool):
                 raise e
 
 
+# GPT3
 """
 llm = factory_create_connector_llm(
     provider='azure_openai',
@@ -187,3 +195,5 @@ assert type(r.answer) == str
 assert len(r.answer) > 4
 print(r.answer)
 """
+
+# Llama

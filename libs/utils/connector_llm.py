@@ -2,6 +2,7 @@ from typing import Literal, List, Optional, Union, AsyncGenerator, Generator, Aw
 from pydantic import BaseModel, ConfigDict, computed_field
 from functools import cached_property
 from abc import ABC, abstractmethod
+import json
 import openai
 from libs.utils.prompt_manipulation import DefinitionOpenaiTool
 from libs.utils.logger import get_logger
@@ -50,7 +51,7 @@ class HyperparametersOpenAI(Hyperparameters):
 
 
 class HyperparametersLlamaCPP(Hyperparameters):
-    max_tokens: int = 150
+    max_tokens: int = 2048
     temperature: float = 0.7
     top_p: float = 1.0
     frequency_penalty: float = 0.0
@@ -98,6 +99,24 @@ class ChatCompletionMessageResponse(BaseModel):
     content: Optional[str] = None
     role: str = 'assistant'
     tool_calls: Optional[List[OpenAIToolCall]] = None
+
+    def to_message(self) -> ChatCompletionMessage:
+        '''
+        Warning: this is an approximate convertion, it may not suite all cases
+        '''
+        message: ChatCompletionMessage
+        if (self.content is None) and (self.tool_calls is None):
+            logger.warning('Neither content nor tool_calls are provided. Response will be empty.')
+            message = ChatCompletionMessage(role=self.role, content='')
+        elif (self.content is not None) and (self.tool_calls is None):
+            message = ChatCompletionMessage(role=self.role, content=self.content)
+        elif (self.content is None) and (self.tool_calls is not None):
+            message = ChatCompletionMessage(role=self.role, content=json.dumps(self.tool_calls))
+        else:
+            logger.warning('Both content and tool_calls are not None. Response will contain only content.')
+            message = ChatCompletionMessage(role=self.role, content=self.content)
+
+        return message
 
 
 class ChatCompletionChoice(BaseModel):
@@ -220,9 +239,10 @@ class ConnectorLLMOpenAI(ConnectorLLM):
             else:
                 logger.warning("Tool calls are not supported for this model")
         else:
-            if self.hyperparameters.tool_choice != 'none':
-                logger.warning('Tool required, but no tool was provided. Overwriting to none.')
-            params.pop('tool_choice')
+            if 'tool_choice' in params:
+                if params['tool_choice'] != 'none':
+                    logger.warning('Tool required, but no tool was provided. Overwriting to none.')
+                params.pop('tool_choice')
         return params
 
     def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:

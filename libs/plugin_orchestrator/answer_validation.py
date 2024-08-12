@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from libs.utils.json_resilient import json_loads_resilient
 from libs.utils.html import convert_markdown_to_html
-
+from libs.utils.connector_llm import ChatCompletionMessage
 
 class Citation(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], description='used to match between citation, intermediate step and text marks')
@@ -25,6 +25,11 @@ class ValidatedAnswer(BaseModel):
     citations: list[Citation] = []
     visualizations: list[Visualization] = []
 
+    def to_message(self) -> ChatCompletionMessage:
+        '''
+        Warning: this is an approximate convertion, it may not suite all cases
+        '''
+        return ChatCompletionMessage(role='assistant', content=self.answer)
 
 class ValidatedAnswerPart(BaseModel):
     answer: Optional[str] = None
