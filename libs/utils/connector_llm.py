@@ -1,4 +1,4 @@
-from typing import Literal, List, Optional, AsyncGenerator, Generator, Awaitable
+from typing import Literal, List, Optional, Union, AsyncGenerator, Generator, Awaitable
 from pydantic import BaseModel, ConfigDict, computed_field
 from functools import cached_property
 from abc import ABC, abstractmethod
@@ -46,7 +46,7 @@ class HyperparametersOpenAI(Hyperparameters):
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
     stop: Optional[List[str]] = None
-    tool_choice: Optional[str] = "required"
+    tool_choice: Union[str, dict] = 'required'  # 'required', 'none', or a dict like {"type": "function", "function": {"name": "my_function"}}
 
 
 class HyperparametersLlamaCPP(Hyperparameters):
@@ -186,8 +186,9 @@ class ConnectorLLMOpenAI(ConnectorLLM):
     @computed_field  # type: ignore
     @cached_property
     def response_format(self) -> dict:
+        # TODO: currently unused; hasto be set in hyperparam?
         if self.capabilities.response_json_only:
-            return {"type": "json_object"}  # TODO: currently unused; hasto be set in hyperparam?
+            return {"type": "json_object"}
         else:
             return {"type": "text"}
 
@@ -218,6 +219,10 @@ class ConnectorLLMOpenAI(ConnectorLLM):
                 params['tools'] = [d.dict() for d in tool_definitions]
             else:
                 logger.warning("Tool calls are not supported for this model")
+        else:
+            if self.hyperparameters.tool_choice != 'none':
+                logger.warning('Tool required, but no tool was provided. Overwriting to none.')
+            params.pop('tool_choice')
         return params
 
     def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
@@ -286,7 +291,7 @@ class ConnectorLLMLlamaCPP(ConnectorLLMOpenAI):
     hyperparameters: HyperparametersLlamaCPP  # type: ignore
 
 
-def create_connector_llm(
+def factory_create_connector_llm(
     credentials: Credentials,
     hyperparameters: dict = {},
     provider: Literal['openai', 'azure_openai', 'llama_cpp'] = 'openai',
@@ -337,7 +342,7 @@ def create_connector_llm(
 # Pseudo integration tests 1A - Simple messages - OpenAI
 # this requires calls to openAI ($$$)
 '''
-llm = create_connector_llm(
+llm = factory_create_connector_llm(
     provider='azure_openai',
     modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
     version=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT").split('-')[-1],
@@ -393,7 +398,7 @@ assert len(answer) > 2
 
 # Pseudo integration tests 1B - Simple messages - LlamaCPP
 '''
-llm = create_connector_llm(
+llm = factory_create_connector_llm(
     provider='llama_cpp',
     modelname='not-needed',
     version='not-needed',
@@ -449,7 +454,7 @@ assert len(answer) > 2
 # Pseudo integration tests 2A - Tool calling - OpenAI
 # this requires calls to openAI ($$$)
 '''
-llm = create_connector_llm(
+llm = factory_create_connector_llm(
     provider='azure_openai',
     modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
     version=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT").split('-')[-1],

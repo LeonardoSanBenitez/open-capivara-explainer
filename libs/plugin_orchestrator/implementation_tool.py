@@ -1,14 +1,14 @@
-from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator
+from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator, Tuple
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 import hashlib
 import time
 
 from libs.utils.logger import get_logger
-from libs.utils.prompt_manipulation import count_message_tokens, count_string_tokens, create_chat_message, generate_context, construct_prompt
-from libs.utils.parse_llm import detect_function_call
+from libs.utils.prompt_manipulation import count_message_tokens, count_string_tokens, create_chat_message
 from libs.plugin_orchestrator.answer_validation import ValidatedAnswer, ValidatedAnswerPart, Citation, default_answer_validator
-from libs.utils.connector_llm import ConnectorLLM, ChatCompletionMessage, ChatCompletionMessageResponse
+from libs.utils.connector_llm import ConnectorLLM, ChatCompletionMessage, ChatCompletionMessageResponse, OpenaiFunctionCall
 from libs.utils.prompt_manipulation import DefinitionOpenaiTool
+from libs.utils.json_resilient import json_loads_resilient
 
 
 '''
@@ -19,6 +19,12 @@ support async tools and async secondary channels
 implement considary channel update types "at_finish" and "at_failure"
 strong typing for the parameters of send_func, one for each update_type
 Maybe also support something for streaming the answer, like update_type=every_chunk_of_answer
+
+early_stopping_method: if max_steps_allowed is reached, what to do
+Either 'force' or 'generate'
+
+
+currently there is no reasoning step (the LLM returns functionCalls immediatly after the user prompt)
 '''
 logger = get_logger('libs.plugin_orchestrator')
 
@@ -36,6 +42,12 @@ class SecondaryChannelDefinition(BaseModel):
 
 class OrchestratorWithTool(BaseModel):
     '''
+    Used to answer one question.
+    Will interact with the LLM in a series of [internal] steps, each step being a message exchange.
+    The state for one question (and its multiple steps) is handled by this class.
+    For an entire conversation (multiple questions from the user), you need to instantiate this class multiple times.
+    The state of an entire conversation is not handled by this class, but by the caller, and is passed via full_message_history.
+
     # Considerations about output validation
     function that will be applied after the answer is generated.
     Receives an unstructured dict (dependant of the 'answer' definition) and returns a ValidatedAnswer.
@@ -56,48 +68,101 @@ class OrchestratorWithTool(BaseModel):
     Can be used as hooks/callbacks.
     The definition includes a function written by you (the caller), where you can define how to integrate with your service.
     Defined in the parameter `secondary_channels: List[SecondaryChannelDefinition]`.
-
     '''
     connection: ConnectorLLM
-    tool_definitions: List[DefinitionOpenaiTool]
+
     tool_callables: Dict[str, Callable[..., str]]
+    tool_definitions: List[DefinitionOpenaiTool]
+    _tool_definitions_active: List[DefinitionOpenaiTool] = PrivateAttr(default=[])  # Only the ones the model is allowed to call in the current step
 
     token_limit_input: int
     token_limit_output: Optional[int]
-    max_steps_recommended: int
+    max_steps_recommended: int = Field(..., description="The maximum number of steps recommended to complete the task, including the 'answer' function")
     max_steps_allowed: int
+    _current_step: int = PrivateAttr(default=1)
 
-    system_prompt: str
-    triggering_prompt: str
-    user_prompt: str
+    full_message_history: List[ChatCompletionMessage] = []  # Can be set in the initialization to pass history, but as also modified along the way
+    prompt_app_system: str
+    prompt_app_user: str
+    _prompt_orchestrator_triggering: str = PrivateAttr()
+    _prompt_orchestrator_system: str = PrivateAttr()
 
     secondary_channels: List[SecondaryChannelDefinition] = []
     answer_validator: Callable[[dict], ValidatedAnswer] = default_answer_validator
-    full_message_history: List[ChatCompletionMessage] = []  # Can be set in the initialization to pass history, but as also modified along the way
-
-    _current_step: int = PrivateAttr(default=1)
-    _tool_definitions_active: List[DefinitionOpenaiTool] = PrivateAttr(default=[])  # Only the ones the model is allowed to call in the current step
+    answer_function_name: str = 'answer'
     _citations: List[Citation] = PrivateAttr(default=[])
     _called_functions: List[str] = PrivateAttr(default=[])
 
     @model_validator(mode='after')
     def _model_validator(self):
         self._tool_definitions_active = self.tool_definitions
+        self._prompt_orchestrator_system = (
+                f"Your goal is to answer the user question, and you can call functions (aka commands/actions) to achieve that.\n"
+                f"Your decisions must always be made independently without seeking user assistance.\n"
+                f"Every action has a cost, so be smart and efficient. You'll be rewarded if you answer correctly and quickly.\n"
+                f"Aim to complete the goal in the least number of steps (aka function calls). Whenever you are ready to answer, use the function '{self.answer_function_name}'.\n"
+                f"Do not take more than {self.max_steps_recommended} steps to complete a task (including the function '{self.self.answer_function_name}').\n"
+                f"If at step {self.max_steps_recommended - 1} you don't have all necessary information, answer the best you can with the information at hand.\n"
+                f"Always try to answer with as much useful information as you can.\n"
+        )
 
-    async def _chat_step(self) -> ChatCompletionMessageResponse:
-        '''One interaction with the LLM, sending the prompt, message history and functions.'''
-        ################################
-        # Preprocess prompt
-        # This step have no side effect, all operations are just on local variables
+        self._prompt_orchestrator_triggering = (
+            f"Determine which next function to use next.\n"
+            f"If you have enough information to answer the question, use the '{self.answer_function_name}' function to signal and remember show your results.\n"
+            f"Call only one function per message.\n"
+            f"Do not call the same function with the same arguments more than once, their outputs are deterministic."
+        )
+
+    @staticmethod
+    def _detect_function_call(response: ChatCompletionMessageResponse) -> Tuple[bool, Optional[str], Optional[Dict]]:
+        '''
+        @return is_function_calling: bool
+        @return function_name: Optional[str]
+        @return function_arguments: Optional[Dict]
+
+        This step have no side effect
+        '''
+        if response.tool_calls is not None and len(response.tool_calls) > 0:
+            logger.info('Function calling detected by: native API feature')
+            assert response.tool_calls[0].function is not None
+            function_call: OpenaiFunctionCall = response.tool_calls[0].function
+            worked, function_arguments = json_loads_resilient(function_call.arguments)
+            if not worked:
+                logger.warning(f"Could not parse, error: {function_arguments}")
+                return False, None, None
+            else:
+                assert type(function_arguments) == dict
+                return True, function_call.name, function_arguments
+        elif response.content is not None and response.content != '':
+            logger.warning('Function calling detected by: custom implementation (not yet implemented)')
+            # TODO
+            return False, None, None
+        else:
+            return False, None, None
+
+    def _prepare_prompt_step(self) -> List[ChatCompletionMessage]:
+        '''
+        Assembles the exact prompt to be sent to the LLM to execute the next step.
+        Responsibilities:
+        * Puts together system prompts and user prompt
+        * Describes the tools that can be used (if necessary; aka if LLM does not support tool calling)
+        * Adds the full message history, aware of token limits
+
+        This step have no side effect, all operations are just on the returned variable
+        '''
         # TODO: This is a very ugly legacy code that requires converting form pydantic to dicts, then back to pydantic
         converted_full_message_history = [m.dict() for m in self.full_message_history]
-        next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
-            self.system_prompt,
-            converted_full_message_history,
-            self.user_prompt,
-        )
+
+        current_context: List[dict] = [
+            create_chat_message("system", '# General instructions\n' + self._prompt_orchestrator_system + '\n\n# Asistant-specific instructions\n' + self.prompt_app_system),
+            create_chat_message("user", self.prompt_app_user),
+        ]
+        current_tokens_used: int = count_message_tokens(current_context)
+        next_message_to_add_index: int = len(converted_full_message_history) - 1
+        insertion_index: int = len(current_context)
+
         # Account for user input (appended later)
-        current_tokens_used += count_message_tokens([create_chat_message("system", self.triggering_prompt)])
+        current_tokens_used += count_message_tokens([create_chat_message("system", self._prompt_orchestrator_triggering)])
         current_tokens_used += 35 + 8*2
 
         # Add Messages until the token limit is reached or there are no more messages to add.
@@ -111,7 +176,7 @@ class OrchestratorWithTool(BaseModel):
                 logger.warning(f"Input token limit exceeded before including all history.")
                 current_context.insert(insertion_index, create_chat_message(
                     "system",
-                    "The input token limit was already exceeded. Next you should call 'answer' with all the results you have, even if it is incomplete. Do not call any other function."
+                    f"The input token limit was already exceeded. Next you should call '{self.answer_function_name}' with all the results you have, even if it is incomplete. Do not call any other function."  # noqa: E501
                 ))
                 was_aborted = True
                 break
@@ -124,16 +189,21 @@ class OrchestratorWithTool(BaseModel):
             next_message_to_add_index -= 1
 
         # Append user input, the length of this is accounted for above
-        current_context.extend([create_chat_message("system", f'This will be your step {self._current_step}. ' + self.triggering_prompt)])
+        current_context.extend([create_chat_message("system", f'This will be your step {self._current_step}. ' + self._prompt_orchestrator_triggering)])
         if was_aborted:
             current_context.extend([create_chat_message(
                 "system",
-                "The input token limit was already exceeded. Next you should call 'answer' with all the results you have, even if it is incomplete. Do not call any other function."
+                f"The input token limit was already exceeded. Next you should call '{self.answer_function_name}' with all the results you have, even if it is incomplete. Do not call any other function."  # noqa: E501
             )])
         current_step_messages: List[ChatCompletionMessage] = [ChatCompletionMessage(**m) for m in current_context]
-        # End of preprocess prompt
-        ################################
+        return current_step_messages
 
+    async def _chat_step(self, current_step_messages: List[ChatCompletionMessage]) -> ChatCompletionMessageResponse:
+        '''
+        One interaction with the LLM, sending the prompt
+        This step calls the LLM, potentially generating costs and other side effects, but do not modify any internal state
+        @param current_step_messages: The prompt to be sent to the LLM
+        '''
         try:
             chat_completion = await self.connection.chat_completion_async(
                 messages=current_step_messages,
@@ -146,6 +216,9 @@ class OrchestratorWithTool(BaseModel):
 
         except Exception as e:
             if "The API deployment for this resource does not exist" in str(e):
+                # This happens only with AzureOpenAI LLMs
+                # We rewrite because the error is unclear
+                # TODO: Maybe this should not be done here...
                 raise Exception("Please fill in the deployment name of your Azure OpenAI resource gpt-4 model.")
             else:
                 raise e
@@ -161,8 +234,8 @@ class OrchestratorWithTool(BaseModel):
         if call_hash in self._called_functions:
             logger.warning(f"Function {function_name} was already called with the same arguments.")
             result_final += f"The function {function_name} was already called with the same arguments."\
-                            " Please refer to the previous results, instead of calling the same function twice with the same arguments."\
-                            " If you are not sure how to proceed, call 'answer' with all the results you have (your results are probably good enough, just answer normally).\n"
+                            f" Please refer to the previous results, instead of calling the same function twice with the same arguments."\
+                            f" If you are not sure how to proceed, call '{self.answer_function_name}' with all the results you have (your results are probably good enough, just answer normally).\n"
             result_status_code = 202
         self._called_functions.append(call_hash)
 
@@ -179,8 +252,8 @@ class OrchestratorWithTool(BaseModel):
             result_status_code = 500
 
         if self._current_step >= self.max_steps_recommended:
-            result_final += f"\nAs this was the step {self._current_step - 1}/{self.max_steps_recommended}, next you should call 'answer' with all the results you have."
-            self._tool_definitions_active = list(filter(lambda d: d.function.name == 'answer', self.tool_definitions))
+            result_final += f"\nAs this was the step {self._current_step - 1}/{self.max_steps_recommended}, next you should call '{self.answer_function_name}' with all the results you have."
+            self._tool_definitions_active = list(filter(lambda d: d.function.name == self.answer_function_name, self.tool_definitions))
 
         result_length = count_string_tokens(result_final)
         if result_length + 600 > self.token_limit_input:
@@ -224,11 +297,13 @@ class OrchestratorWithTool(BaseModel):
                 raise MaxStepsExceededError(f"Exceeded the maximum number of steps allowed: {self.max_steps_allowed}")
 
             # Send message to AI, get response
-            response: ChatCompletionMessageResponse = await self._chat_step()
+            current_step_messages = self._prepare_prompt_step()
+            # print('>>>>>>>>> SENDING PROMPT TO AI: ', current_step_messages)
+            response: ChatCompletionMessageResponse = await self._chat_step(current_step_messages)
             self._current_step += 1
 
             # print('>>>>>>>>> RAW RESPONSE:', response)
-            is_function_calling, function_name, function_arguments = detect_function_call(response)
+            is_function_calling, function_name, function_arguments = self._detect_function_call(response)
             if is_function_calling:
                 assert type(function_name) == str
                 assert type(function_arguments) == dict
@@ -236,11 +311,11 @@ class OrchestratorWithTool(BaseModel):
                 logger.info(text)
                 self.full_message_history.append(ChatCompletionMessage(role='system', content=text))
 
-                if function_name == 'answer':
-                    # TODO: inform the LLM if the answer is not valid, so it can try again (currently, the validator must handle this, and can't communicate with the LLM)
+                if function_name == self.answer_function_name:
                     assert 'citations' not in function_arguments, "The 'citations' key is reserved for the answer_validator"
                     function_arguments['citations'] = self._citations
                     validated_answer = self.answer_validator(function_arguments)
+                    # TODO: test if answer is valid; if not, inform the LLM and ask ti to try again (currently, the validator can't communicate with the LLM)
                     return validated_answer
                 elif function_name in self.tool_callables:
                     command_result = await self._call_function(function_name, function_arguments)
@@ -263,7 +338,7 @@ class OrchestratorWithTool(BaseModel):
 
 # Pseudo test
 """
-llm = create_connector_llm(
+llm = factory_create_connector_llm(
     provider='azure_openai',
     modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
     version=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT").split('-')[-1],
@@ -273,31 +348,16 @@ llm = create_connector_llm(
     ),
 )
 
-max_steps_recommended = 1
-
 orchestrator = OrchestratorWithTool(
     connection = llm,
     tool_definitions = openai_function_to_tool.generate_definitions(semantic_kernel_v0_to_openai_function.generate_definitions([(PluginCapital(), "PluginCapital")])),
     tool_callables = generate_callables([(PluginCapital(), "PluginCapital")]),
     token_limit_input = 1024,
     token_limit_output = None,
-    max_steps_recommended = max_steps_recommended,
+    max_steps_recommended = 2,
     max_steps_allowed = 3,
-    system_prompt=f'''you are an AI assistant whose goal is to answer the user question.
-    Always use the tools, do not answer without the tools.
-    Your decisions must always be made independently without seeking user assistance.
-    Every command has a cost, so be smart and efficient. You'll be rewarded if you answer correctly and quickly.
-    Aim to complete tasks in the least number of steps. Whenever you are ready to answer, use the function 'answer'.
-    Do not take more than {max_steps_recommended} steps to complete a task (including the function 'answer').
-    If at step {max_steps_recommended - 1} you don't have all necessary information, answer the best you can with the information at hand.
-    Always try to answer with as much useful information as you can.
-    ''',
-    triggering_prompt='''Determine which next function to use next.
-    If you have enough information to answer the question, use the 'answer' function to signal and remember show your results.
-    Call only one function per message.
-    Do not call the same function with the same arguments more than once, their outputs are deterministic.
-    ''',
-    user_prompt='Question: What is the capital of brasil?',
+    prompt_app_system='You are an AI assistant whose goal is to answer the user question.',
+    prompt_app_user='What is the capital of brasil?',
 )
 r = await orchestrator.run()
 print(r)

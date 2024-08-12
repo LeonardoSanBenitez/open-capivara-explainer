@@ -111,30 +111,6 @@ def create_chat_message(role: str, content: str, name: Optional[str] = None) -> 
         return {"role": role, "name": name, "content": content}
 
 
-def generate_context(prompt: str, full_message_history: List[dict], user_prompt: str, model="gpt-3.5-turbo") -> Tuple[int, int, int, List[dict]]:
-    '''
-    @return next_message_to_add_index int
-    @return current_tokens_used int
-    @return insertion_index int
-    @return current_context List[dict]
-    '''
-    current_context = [
-        create_chat_message("system", prompt),
-        create_chat_message("user", user_prompt),
-    ]
-
-    # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(full_message_history) - 1
-    insertion_index = len(current_context)
-    current_tokens_used = count_message_tokens(current_context, model)
-    return (
-        next_message_to_add_index,
-        current_tokens_used,
-        insertion_index - 1,  # minus one so that the user_prompt is the last message
-        current_context,
-    )
-
-
 def construct_prompt(current_context: List[dict]) -> str:
     update_current_context = []
     for item in current_context:
