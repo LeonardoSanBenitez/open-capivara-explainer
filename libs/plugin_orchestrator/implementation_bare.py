@@ -195,5 +195,3 @@ assert type(r.answer) == str
 assert len(r.answer) > 4
 print(r.answer)
 """
-
-# Llama

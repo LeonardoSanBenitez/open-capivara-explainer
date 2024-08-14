@@ -34,7 +34,7 @@ class DatasetExporter(BaseModel):
         test_df = shuffled_df.iloc[:test_len]
         validation_df = shuffled_df.iloc[test_len:test_len + validation_len]
         train_df = shuffled_df.iloc[test_len + validation_len:]
-        
+
         assert train_df.shape[0] + validation_df.shape[0] + test_df.shape[0] == df.shape[0]
         return train_df, validation_df, test_df
 
@@ -44,7 +44,7 @@ class DatasetExporter(BaseModel):
         Side-effect free
         '''
         if self.prompt_format != 'zephyr':
-            raise not NotImplementedError("Only zephyr format is supported at the moment")
+            raise NotImplementedError("Only zephyr format is supported at the moment")
         if len(self.dataset) == 0:
             raise ValueError("Dataset is empty")
 
@@ -69,10 +69,11 @@ class DatasetExporterHuggingFace(DatasetExporter):
         df = self._convert_to_df()
 
         # Upload each split to HF
-        assert os.getenv('HF_TOKEN') is not None and len(os.getenv('HF_TOKEN')) > 0
+        assert type(os.getenv('HF_TOKEN')) == str
+        assert len(os.getenv('HF_TOKEN')) > 0  # type: ignore
         api = HfApi()
         df_train, df_validation, df_test = self._split_df(df, test_size=0.1, validation_size=0.1)
-        
+
         for df_split, dataset_split in [(df_train, 'train'), (df_validation, 'validation'), (df_test, 'test')]:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".parquet") as f:
                 df_split.to_parquet(f.name, engine='pyarrow', index=False)
@@ -101,6 +102,7 @@ await DatasetExporterHuggingFace(
 ###############################
 class DatasetExporterLocal(DatasetExporter):
     path_local_base: str
+
     async def export(self) -> None:
         '''
         Saves 3 parquet files with the names train.parquet, validation.parquet and test.parquet

@@ -1,4 +1,4 @@
-from typing import Literal, List, Optional, Union, AsyncGenerator, Generator, Awaitable
+from typing import Literal, List, Optional, Union, AsyncGenerator, Generator
 from pydantic import BaseModel, ConfigDict, computed_field
 from functools import cached_property
 from abc import ABC, abstractmethod
@@ -11,8 +11,6 @@ logger = get_logger('libs.connector_llm')
 
 '''
 TODO:
-
-this is quite specific to the Orchestrator, maybe it should be moved there
 
 text completion method are still not supported
 
@@ -114,6 +112,7 @@ class ChatCompletionMessageResponse(BaseModel):
             message = ChatCompletionMessage(role=self.role, content=json.dumps(self.tool_calls))
         else:
             logger.warning('Both content and tool_calls are not None. Response will contain only content.')
+            assert type(self.content) == str
             message = ChatCompletionMessage(role=self.role, content=self.content)
 
         return message
@@ -188,7 +187,7 @@ class ConnectorLLM(BaseModel, ABC):
         pass
 
     @abstractmethod
-    async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Awaitable[TextCompletion]:
+    async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
         pass
 
     @abstractmethod
@@ -280,7 +279,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
     def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletion, None, None]:
         raise NotImplementedError()
 
-    async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Awaitable[TextCompletion]:
+    async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
         raise NotImplementedError()
 
     async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletion, None]:
