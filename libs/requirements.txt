@@ -13,7 +13,7 @@ openai~=1.39
 #azure-search-documents==11.4.0b8
 
 semantic-kernel==0.5.0.dev0 # it says it requires `openai==1.0`, but it worked
-
+huggingface_hub~=0.24
 
 ###################
 # Data
@@ -25,6 +25,9 @@ matplotlib
 #pyspark~=3.5
 #deltalake~=0.18  # For standalone delta (without spark)
 lxml
+datasets~=2.20
+pyarrow~=17.0
+faker~=27.0
 
 ###################
 # General
