@@ -1,10 +1,11 @@
 
 import json
 import os
-from typing import Tuple, Literal, List
+from typing import Tuple, Literal, List, Dict
 import tempfile
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
+from jinja2 import Template
 from huggingface_hub import HfApi
 
 from libs.utils.logger import get_logger
@@ -18,6 +19,14 @@ class DatasetExporter(BaseModel):
     dataset: List[List[ChatCompletionMessage]]
     prompt_format: Literal['zephyr', 'chatml', 'llama2', 'llama3'] = 'zephyr'
     dataset_text_field: str = "text"
+
+    # Every template receives the variables:
+    # - messages: List[Dict[str, str]] with keys 'role' and 'content'; serialization of ChatCompletionMessage
+    # - eos_token: str; end of sentence token
+    # - add_generation_prompt: bool; if True, add a generation prompt at the end of the text
+    _prompt_format_templates: Dict[str, str] = PrivateAttr(default={
+        'zephyr': "{% for message in messages %}{% if message['role'] == 'user' %}{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}{% endfor %}",  # noqa: E501
+    })
 
     @staticmethod
     def _split_df(df: pd.DataFrame, test_size: float, validation_size: float) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -38,20 +47,30 @@ class DatasetExporter(BaseModel):
         assert train_df.shape[0] + validation_df.shape[0] + test_df.shape[0] == df.shape[0]
         return train_df, validation_df, test_df
 
-    def _convert_to_df(self) -> pd.DataFrame:
+    def _convert_trajectory_to_str(self, trajectory: List[ChatCompletionMessage]):
+        template = self._prompt_format_templates[self.prompt_format]
+        result = Template(template).render(
+            messages=[message.dict() for message in trajectory],
+            eos_token="</s>",
+            add_generation_prompt=False,
+        )
+        return result
+
+    def _convert_dataset_to_df(self) -> pd.DataFrame:
         '''
         Convert messages to trainable text
         Side-effect free
         '''
         if self.prompt_format != 'zephyr':
             raise NotImplementedError("Only zephyr format is supported at the moment")
+        assert self.prompt_format in self._prompt_format_templates.keys()
         if len(self.dataset) == 0:
             raise ValueError("Dataset is empty")
 
         rows: List[str] = []
         for row in self.dataset:
             # TODO: this is not zefhir...
-            rows.append(json.dumps([message.dict() for message in row]))
+            rows.append(self._convert_trajectory_to_str(row))
         assert all([type(row)==str for row in rows])
         df = pd.DataFrame(rows, columns=[self.dataset_text_field])
         assert df.shape[0] == len(self.dataset)
@@ -66,7 +85,7 @@ class DatasetExporterHuggingFace(DatasetExporter):
     async def export(self) -> None:
         # TODO: async, maybe using run_as_future
         # https://huggingface.co/docs/huggingface_hub/guides/upload#non-blocking-uploads
-        df = self._convert_to_df()
+        df = self._convert_dataset_to_df()
 
         # Upload each split to HF
         assert type(os.getenv('HF_TOKEN')) == str
@@ -110,7 +129,7 @@ class DatasetExporterLocal(DatasetExporter):
         if not os.path.exists(self.path_local_base):
             os.makedirs(self.path_local_base)
 
-        df = self._convert_to_df()
+        df = self._convert_dataset_to_df()
         df_train, df_validation, df_test = self._split_df(df, test_size=0.1, validation_size=0.1)
         for df_split, dataset_split in [(df_train, 'train'), (df_validation, 'validation'), (df_test, 'test')]:
             df_split.to_parquet(os.path.join(self.path_local_base, dataset_split + '.parquet'), engine='pyarrow', index=False)

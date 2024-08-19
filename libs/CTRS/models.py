@@ -65,6 +65,14 @@ class Decision(BaseModel):
     details: str = ''
 
 
+class CriteriaResult(BaseModel):
+    criteria_name: str
+    worked: bool
+    passed: bool  # True = indicates a false positive
+    weight: int
+    details: str
+
+
 class Alert(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     alert_id: Optional[str] = None
@@ -76,8 +84,9 @@ class Alert(BaseModel):
     source: Optional[str] = 'sentinel'
 
     groups: List[str] = []
-    results: list = []  # TODO
+
     decision: Decision = Field(default_factory=Decision)
+    results: List[CriteriaResult] = []
     execution_time: Optional[float] = None
     signatures: Optional[Signatures] = None
 
@@ -123,9 +132,13 @@ class Alert(BaseModel):
     related_analytic_rule_ids: list = []
 
 
-class CriteriaResult(BaseModel):
-    criteria_name: str
-    worked: bool
-    passed: bool  # True = indicates a false positive
-    weight: int
-    details: str
+class AlertUpdate(Alert):
+    # Just turn everything optional
+    groups: Optional[List[str]] = None
+    decision: Optional[Decision] = None
+    results: Optional[List[CriteriaResult]] = None
+    extended_properties: Optional[dict] = None
+    entities: Optional[List[dict]] = None
+    extended_links: Optional[list] = None
+    labels: Optional[List[str]] = None
+    related_analytic_rule_ids: Optional[list] = None

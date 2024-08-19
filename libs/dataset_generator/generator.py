@@ -158,13 +158,13 @@ async def generate_trajectory_sorry_PluginCapital_get_capital() -> List[ChatComp
     country = random.choice(list(country_to_capital.keys()))
     country_requested = random.choice([country, country.lower(), country.upper()])
     user_message = random.choice([
-        f"What is the capital of {country_requested}?'"
-        f"Can you tell me the capital of {country_requested}?'"
-        f"I need help with a geography exam about {country_requested}, can you tell me what is its capital?'"
+        f"What is the capital of {country_requested}?'",
+        f"Can you tell me the capital of {country_requested}?'",
+        f"I need help with a geography exam about {country_requested}, can you tell me what is its capital?'",
     ])
     assistant_thought = random.choice([
-        f"I don't have the necessary tools to answer that'"
-        f"I have no tools to get the necessary information'"
+        f"I don't have the necessary tools to answer that'",
+        f"I have no tools to get the necessary information'",
     ])
     assistant_answer = "Sorry, I don't know the answer to that question."
     return [
@@ -188,10 +188,10 @@ async def generate_trajectory_call_PluginCapital_get_capital() -> List[ChatCompl
         f"Can you tell me the capital of {country_requested}{random.choice(['?', ''])}",
         f"I need help with a geography exam about {country_requested}, can you tell me what is its capital?",
         # f'{faker.sentence()} What is the capital of {country_requested}?',
-        f"My geography exam is tomorrow, {faker.date()}{random.choice(['.', ';'])} I'm sure the teacher will ask what is the capital of {country_requested}. Can you give me the correct answer now?"
-        f"I have {faker.pyint(min_value=1, max_value=5)} minutes to find out what the capital of {country_requested} is. Can you answer that for me? Please{random.choice(['?', '!', ' :)', ''])}"
-        f"I'm doing my school exam at {faker.url()}, and it asks what is the capital of {country_requested}. What is the answer?"
-        f"My friends {faker.name()} and {faker.name()} said they are in the capital of {country_requested}. I was ashamed to ask what is the name of the city. Can you help me?"
+        f"My geography exam is tomorrow, {faker.date()}{random.choice(['.', ';'])} I'm sure the teacher will ask what is the capital of {country_requested}. Can you give me the correct answer now?",
+        f"I have {faker.pyint(min_value=1, max_value=5)} minutes to find out what the capital of {country_requested} is. Can you answer that for me? Please{random.choice(['?', '!', ' :)', ''])}",
+        f"I'm doing my school exam at {faker.url()}, and it asks what is the capital of {country_requested}. What is the answer?",
+        f"My friends {faker.name()} and {faker.name()} said they are in the capital of {country_requested}. I was ashamed to ask what is the name of the city. Can you help me?",
     ])
 
     assistant_thought = random.choice([
@@ -219,7 +219,7 @@ generator = DatasetGenerator(
         'PluginCapital_get_capital': generate_trajectory_call_PluginCapital_get_capital,
     },
     answer_function_name=answer_function_name,
-    n=50,
+    n=10000,
 )
 
 # end of plugin specific code

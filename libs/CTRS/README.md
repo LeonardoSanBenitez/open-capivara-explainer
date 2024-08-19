@@ -16,6 +16,8 @@ Toolkit: series of utilities written in python to work with CTRS-compliant objec
 * POST https://<domain>/v1/public-api-delete-incidents
 * POST https://<domain>/v1/availability-test
 
+See `libs/CTRS/openapi.json` for a detailed definition of the endpoints.
+
 ## Ticket schema
 
 See in "libs/CTRS/models.py"
