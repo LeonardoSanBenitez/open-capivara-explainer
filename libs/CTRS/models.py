@@ -2,6 +2,8 @@ from typing import Optional, Union
 import uuid
 from pydantic import BaseModel, Field
 from typing import List, Literal
+import time
+
 
 '''
 # About entities
@@ -73,22 +75,28 @@ class CriteriaResult(BaseModel):
     details: str
 
 
+class Message(BaseModel):
+    timestamp: int = Field(default_factory=lambda: int(time.time()))
+    message: str
+    user: str
+
+
 class Alert(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    alert_id: Optional[str] = None
-    incident_id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
     severity: Optional[Literal['High', 'Informational', 'Low', 'Medium']] = 'Low'
     category: Optional[str] = None
     state: Optional[Literal['new', 'analyzing', 'analysed', 'closed']] = 'new'
     version: Optional[str] = None
     source: Optional[str] = 'sentinel'
 
-    groups: List[str] = []
-
     decision: Decision = Field(default_factory=Decision)
     results: List[CriteriaResult] = []
     execution_time: Optional[float] = None
     signatures: Optional[Signatures] = None
+    conversation_user: List[Message] = []
+    conversation_system: List[Message] = []
 
     workspace_id: Optional[str] = None
     timestamp: Optional[int] = None
@@ -99,9 +107,8 @@ class Alert(BaseModel):
     timestamp_last_activity: Optional[int] = None
     timestamp_first_modified: Optional[int] = None
     timestamp_last_modified: Optional[int] = None
-    title: Optional[str] = None
+    groups: List[str] = []
     alert_name: Optional[str] = None
-    description: Optional[str] = None
     provider_name: Optional[str] = None
     vendor_name: Optional[str] = None
     vendor_original_id: Optional[str] = None
@@ -134,11 +141,11 @@ class Alert(BaseModel):
 
 class AlertUpdate(Alert):
     # Just turn everything optional
-    groups: Optional[List[str]] = None
-    decision: Optional[Decision] = None
-    results: Optional[List[CriteriaResult]] = None
-    extended_properties: Optional[dict] = None
-    entities: Optional[List[dict]] = None
-    extended_links: Optional[list] = None
-    labels: Optional[List[str]] = None
-    related_analytic_rule_ids: Optional[list] = None
+    groups: Optional[List[str]] = None  # type: ignore
+    decision: Optional[Decision] = None  # type: ignore
+    results: Optional[List[CriteriaResult]] = None  # type: ignore
+    extended_properties: Optional[dict] = None  # type: ignore
+    entities: Optional[List[dict]] = None  # type: ignore
+    extended_links: Optional[list] = None  # type: ignore
+    labels: Optional[List[str]] = None  # type: ignore
+    related_analytic_rule_ids: Optional[list] = None  # type: ignore

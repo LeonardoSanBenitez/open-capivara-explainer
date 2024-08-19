@@ -1,23 +1,10 @@
 from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
 from semantic_kernel.kernel_pydantic import KernelBaseModel
 from semantic_kernel import KernelContext
+from libs.utils import check_libary_major_version
 
 
-###############################
-# Version check
-import importlib.metadata
-from packaging import version
-required_major_version = '0.5.0'
-installed_version = importlib.metadata.version('semantic_kernel')
-
-# Parse the version to handle semantic versioning properly
-installed_major_version = version.parse(installed_version).base_version
-
-if installed_major_version != required_major_version:
-    raise ImportError(f"semantic_kernel version {required_major_version} is required, but {installed_version} is installed.")
-# End of version check
-###############################
-
+check_libary_major_version('semantic_kernel', '0.5.0')
 
 country_to_capital = {
     "afghanistan": "kabul",

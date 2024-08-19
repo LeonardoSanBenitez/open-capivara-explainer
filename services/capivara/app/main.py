@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional
 from fastapi import FastAPI
 from libs.utils.logger import setup_loggers
-from libs.CTRS.models import Alert, AlertUpdate
+from libs.CTRS.models import Alert, AlertUpdate, Message
 
 
 setup_loggers()
@@ -9,16 +9,17 @@ app = FastAPI(debug=True)
 
 mock_database: List[Alert] = []
 
-
 @app.post("/v1/public-api-create-incidents")
 async def create_incidents(
     incidents: List[Alert],
-) -> List[Tuple[int, Optional[str]]]:
+) -> List[Tuple[int, str]]:
     '''
-    Returns tuples with status code (following HTTP status codes) and error message (if any)
+    Returns tuples with status code (following HTTP status codes) and error message (if any).
+
+    If successful, returns the incident id.
     '''
     mock_database.extend(incidents)
-    return [(200, None) for _ in incidents]
+    return [(200, incident.id) for incident in incidents]
 
 
 @app.post("/v1/public-api-read-incidents")
