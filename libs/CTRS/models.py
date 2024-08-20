@@ -95,8 +95,8 @@ class Alert(BaseModel):
     results: List[CriteriaResult] = []
     execution_time: Optional[float] = None
     signatures: Optional[Signatures] = None
-    conversation_user: List[Message] = []
-    conversation_system: List[Message] = []
+    conversation_customer: List[Message] = []
+    conversation_copilot: List[Message] = []
 
     workspace_id: Optional[str] = None
     timestamp: Optional[int] = None

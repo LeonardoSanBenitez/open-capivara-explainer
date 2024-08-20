@@ -7,6 +7,7 @@ from libs.utils import check_libary_major_version
 
 check_libary_major_version('semantic_kernel', '0.5.0')
 
+
 class PluginCapivaraAlert(KernelBaseModel):
     capivara_base_url: str
     alert_id: str

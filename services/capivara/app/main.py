@@ -7,7 +7,41 @@ from libs.CTRS.models import Alert, AlertUpdate, Message
 setup_loggers()
 app = FastAPI(debug=True)
 
-mock_database: List[Alert] = []
+mock_database: List[Alert] = [
+    Alert( 
+        id = "dc2a",
+        title = "Defective product",
+        description = "I ordered a Handstückschlauch, but it came already broken",
+        severity = "Medium",
+    ),
+    Alert(
+        id = "981a",
+        title = "Help needed during installation",
+        description = "I'm having trouble installing the Clean Reinigungsgerät, could you send someone to help me?",
+        severity = "High",
+        conversation_customer = [
+            Message(user="customer", message="hello, any update?"),
+        ],
+    ),
+    Alert(
+        id = "b3f7",
+        title = "Order more",
+        description = "I want to buy more of the same gloves I bought last time, could you send 100 more?",
+        severity = "Low",
+        state = "closed",
+        conversation_customer = [
+            Message(user="user", message="I have placed the order as requested, you can follow the status in the order page."),
+        ],
+        conversation_copilot = [
+            Message(user="user", message="What have this customer already bought?"),
+            Message(user="assistant", message="The customer have ordered the following items in the past: IPS Natural Die Material ND1, Untersuchungshandschuhe Nitril light lemon Gr. M, Antiseptica r.f.u. Händedesinfektion Flasche 1 Liter"),
+            Message(user="user", message="Buy 100 of those gloves"),
+            Message(user="assistant", message="I have created a new order for 100 Untersuchungshandschuhe Nitril light lemon Gr. M"),
+
+        ],
+    ),
+]
+
 
 @app.post("/v1/public-api-create-incidents")
 async def create_incidents(

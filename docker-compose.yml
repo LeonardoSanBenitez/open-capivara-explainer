@@ -64,3 +64,20 @@ services:
       - PYTHONPATH=/src
     ports:
       - 8001:80
+
+
+  frontend:
+    container_name: explainer-frontend
+    build: 
+      context: .
+      dockerfile: ./services/frontend/Dockerfile
+    command: ["streamlit", "run", "app/main.py", "--server.port=80", "--server.address=0.0.0.0"]
+    volumes:
+      - ./services/frontend/app:/src/app
+      - ./libs:/src/libs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/src
+    ports:
+      - 8501:80
