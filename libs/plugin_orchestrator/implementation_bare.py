@@ -55,7 +55,8 @@ class OrchestratorBare(OrchestratorWithTool):
                 f"Remember to call the function only once per message.\n"
                 f"Do not answer with anything that is not a json, do not add any extra comment, follow exactly the syntax provided.\n"
                 f"Always use the tools, do not answer without the tools.\n"
-                f"You are only allowed to use the functions described above, do not call any other function."
+                f"You are only allowed to use the functions described above, do not call any other function.\n"
+                f"You MUST strictly follow those guidelines at every assistant message."
         )
 
     @staticmethod

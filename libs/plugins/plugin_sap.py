@@ -49,7 +49,7 @@ class PluginSAP(KernelBaseModel):
         required = True,
     )
     @kernel_function_context_parameter(
-        name="amound",
+        name="amount",
         description="Amount of items order.",
         type = "integer",
         required = True,

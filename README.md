@@ -17,7 +17,6 @@ The modules are:
 * plugin converter
 * plugin orchestrator
 * dataset generator
-* LLM finetuner
 
 
 Additionally, this repo contains (these are not intended to be published as packages, never):
@@ -25,6 +24,7 @@ Additionally, this repo contains (these are not intended to be published as pack
 * a very simple frontend with streamlit
 * LLM server (which is just a local deployment of LlamaCPP)
 * plugin orchestrator server (a mixture of library with deployment)
+* LLM finetuner (set of scripts and best practices for finetuning)
 
 
 ## Getting started

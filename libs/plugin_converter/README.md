@@ -1,14 +1,18 @@
 Supported libraries:
 * [Azure OpenAI tool 2024-05-01-preview](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/function-calling?tabs=python-new#defining-functions)
-* OpenAI tool (not tested)
+* OpenAI tool (not tested, but should work)
+* [Azure OpenAI function 2024-05-01-preview](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/function-calling?tabs=python-new#defining-functions)
+* OpenAI function (not tested, but should work)
 * OpenAI assistant (work in progress)
 * semantic-kernel==0.5.0.dev0
-
+* semantic-kernl==1.5.1 (work in progress)
 
 Supported conversions:
 * Semantic Kernel V0 -> OpenAI functions. Function `semantic_kernel_v0_to_openai_function.generate_definitions`.
 * Semantic Kernel V0 -> OpenAI Assistant (work in progress)
-* OpenAI functions -> OpenAI tool
+* OpenAI functions -> OpenAI tool. Function `openai_function_to_tool.generate_definitions`
+* OpenAI functions -> OpenAI Assistant  (work in progress)
+* OpenAI Assistant -> OpenAI functions (work in progress)
 
 Convertions are designed to be as lossless as possible, so you can chain, convert back-and-foward, etc
 

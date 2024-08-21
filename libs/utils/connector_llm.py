@@ -1,4 +1,4 @@
-from typing import Literal, List, Optional, Union, AsyncGenerator, Generator
+from typing import Literal, List, Tuple, Optional, Any, Union, AsyncGenerator, Generator
 from pydantic import BaseModel, ConfigDict, computed_field
 from functools import cached_property
 from abc import ABC, abstractmethod
@@ -12,17 +12,28 @@ logger = get_logger('libs.connector_llm')
 '''
 TODO:
 
-text completion method are still not supported
+This is an openai-like client for calling LLMs: it behaves exactly/similar to the openai python client, but it supports other providers.
+
+Currently supported providers:
+* OpenAI
+* Azure openAI
+* LlamaCPP
+* Bedrock (work in progress)
+
+
+# Known limitations
+
+text completion method are still not implemented
 
 422 not handled
 
 filtered response not handled
 
+Incomplete mapping model->capabilities
 
+Incomplete hyperparameter support
 
-converter: convert functionCall to ToolCall
-
-probably the ToolCall is more reliable, so this module should be refactored to deal with it
+Tool calling only supported at OpenAI (even though bedrock supports it too)
 '''
 
 
@@ -56,6 +67,9 @@ class HyperparametersLlamaCPP(Hyperparameters):
     presence_penalty: float = 0.0
     stop: Optional[List[str]] = None
 
+
+class HyperparametersBedrock(Hyperparameters):
+    maxTokens: int = 1024
 ###
 
 
@@ -67,17 +81,45 @@ class CredentialsOpenAI(Credentials):
     base_url: str
     api_key: str
 
+
+class CredentialsBedrock(Credentials):
+    '''
+    If None, authentication will be done with the current identity
+    '''
+    region_name: str = 'eu-central-1'
+    aws_access_key_id: Optional[str] = None
+    aws_secret_access_key: Optional[str] = None
+
+
 ###
-
-
-class TextCompletion(BaseModel):
-    content: str
-    stop: bool = True
 
 
 class ChatCompletionMessage(BaseModel):
     role: str = 'assistant'
     content: str
+
+    def to_bedrock_normal(self) -> dict:
+        return {
+            'role': self.role,
+            'content': [{'text': self.content}]
+        }
+
+    def to_bedrock_system(self) -> dict:
+        return {
+            'text': self.content
+        }
+
+
+#############################################
+# Models - Text completion response
+class TextCompletion(BaseModel):
+    content: str
+    stop: bool = True
+
+
+class TextCompletionPart(BaseModel):
+    content: Optional[str] = None
+    stop: Optional[bool] = None
 
 
 #############################################
@@ -109,7 +151,7 @@ class ChatCompletionMessageResponse(BaseModel):
         elif (self.content is not None) and (self.tool_calls is None):
             message = ChatCompletionMessage(role=self.role, content=self.content)
         elif (self.content is None) and (self.tool_calls is not None):
-            message = ChatCompletionMessage(role=self.role, content=json.dumps(self.tool_calls))
+            message = ChatCompletionMessage(role=self.role, content=json.dumps([t.dict() for t in self.tool_calls]))
         else:
             logger.warning('Both content and tool_calls are not None. Response will contain only content.')
             assert type(self.content) == str
@@ -129,6 +171,7 @@ class ChatCompletion(BaseModel):
 
 #############################################
 # Models - Partial chat completion response
+# Used for streaming
 # The only difference is that everything is optional
 class OpenaiFunctionCallPart(BaseModel):
     arguments: Optional[str] = None
@@ -167,7 +210,7 @@ class ConnectorLLM(BaseModel, ABC):
         pass
 
     @abstractmethod
-    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletion, None, None]:
+    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:
         pass
 
     @abstractmethod
@@ -183,7 +226,7 @@ class ConnectorLLM(BaseModel, ABC):
         pass
 
     @abstractmethod
-    def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletion, None, None]:
+    def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletionPart, None, None]:
         pass
 
     @abstractmethod
@@ -191,8 +234,75 @@ class ConnectorLLM(BaseModel, ABC):
         pass
 
     @abstractmethod
-    async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletion, None]:
+    async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletionPart, None]:
         pass
+
+
+class ConnectorLLMBedrock(BaseModel, ABC):
+    capabilities: Capabilities
+    hyperparameters: HyperparametersBedrock
+    credentials: Credentials
+    modelname: str
+
+    @computed_field  # type: ignore
+    @cached_property
+    def client(self) -> Any:  # -> botocore.client.BedrockRuntime:
+        import boto3  # noqa
+        return boto3.client(
+            'bedrock-runtime',
+            **self.credentials.dict()
+        )
+
+    def _separate_messages(self, messages: List[ChatCompletionMessage]) -> Tuple[List[dict], List[dict]]:
+        normal_messages = []
+        system_messages = []
+        for message in messages:
+            if message.role == 'system':
+                system_messages.append(message.to_bedrock_system())
+            elif message.role == 'user' or message.role == 'assistant':
+                normal_messages.append(message.to_bedrock_normal())
+            else:
+                raise ValueError(f'Unkown message role: {message.role}')
+        return normal_messages, system_messages
+
+    def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
+        normal_messages, system_messages = self._separate_messages(messages)
+        chat_completion = self.client.converse(
+            modelId=self.modelname,
+            messages=normal_messages,
+            system=system_messages,
+            inferenceConfig=self.hyperparameters.dict(),
+        )
+        return ChatCompletion(
+            choices = [ChatCompletionChoice(
+                message = ChatCompletionMessageResponse(
+                    role = 'assistant',
+                    content = chat_completion['output']['message']['content'][0]['text'],
+                ),
+                finish_reason = chat_completion['stopReason']
+            )]
+        )
+
+    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:
+        normal_messages, system_messages = self._separate_messages(messages)
+        chat_completion_stream = self.client.converse_stream(
+            modelId=self.modelname,
+            messages=normal_messages,
+            system=system_messages,
+            inferenceConfig=self.hyperparameters.dict(),
+        )
+        s = chat_completion_stream.get('stream')
+        assert s is not None
+        for event in s:
+            yield ChatCompletionPart(
+                choices = [ChatCompletionChoicePart(
+                    message = ChatCompletionMessageResponsePart(
+                        role = 'assistant',
+                        content = event.get('contentBlockDelta', {}).get('delta', {}).get('text', None),
+                    ),
+                    finish_reason = event.get('messageStop', {}).get('stopReason', None)
+                )]
+            )
 
 
 class ConnectorLLMOpenAI(ConnectorLLM):
@@ -248,7 +358,7 @@ class ConnectorLLMOpenAI(ConnectorLLM):
         chat_completion = self.client.chat.completions.create(stream=False, **self._chat_completion_assemble_params(messages, tool_definitions))
         return ChatCompletion(**chat_completion.dict())
 
-    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:  # type: ignore
+    def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:
         chat_completion_stream = self.client.chat.completions.create(stream=True, **self._chat_completion_assemble_params(messages, tool_definitions))
 
         for chunk in chat_completion_stream:
@@ -256,33 +366,33 @@ class ConnectorLLMOpenAI(ConnectorLLM):
                 messages_out: List[dict] = [c.delta.dict() for c in chunk.choices]
                 messages_out = [{**m, 'role': m.get('role') or 'assistant'} for m in messages_out]
                 messages_out = [{**m, 'content': m.get('content') or ''} for m in messages_out]
-                choices: List[dict] = [{'message': m} for m in messages_out]
-                yield ChatCompletionPart(choices=choices)  # type: ignore
+                choices: List[ChatCompletionChoicePart] = [ChatCompletionChoicePart(message = ChatCompletionMessageResponsePart(**m)) for m in messages_out]
+                yield ChatCompletionPart(choices=choices)
 
     async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
         chat_completion = await self.client_async.chat.completions.create(stream=False, **self._chat_completion_assemble_params(messages, tool_definitions))
-        return ChatCompletion(**chat_completion.dict())  # type: ignore
+        return ChatCompletion(**chat_completion.dict())
 
     async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletionPart, None]:  # type: ignore
         chat_completion_stream = await self.client_async.chat.completions.create(stream=True, **self._chat_completion_assemble_params(messages, tool_definitions))
         async for chunk in chat_completion_stream:
             if len(chunk.choices) > 0:
-                messages: List[dict] = [c.delta.dict() for c in chunk.choices]  # type: ignore
-                messages = [{**m, 'role': m.get('role') or 'assistant'} for m in messages]  # type: ignore
-                messages = [{**m, 'content': m.get('content') or ''} for m in messages]  # type: ignore
-                choices: List[dict] = [{'message': m} for m in messages]
-                yield ChatCompletionPart(choices=choices)  # type: ignore
+                messages_d: List[dict] = [c.delta.dict() for c in chunk.choices]
+                messages_d = [{**m, 'role': m.get('role') or 'assistant'} for m in messages_d]
+                messages_d = [{**m, 'content': m.get('content') or ''} for m in messages_d]
+                choices: List[ChatCompletionChoicePart] = [ChatCompletionChoicePart(message = ChatCompletionMessageResponsePart(**m)) for m in messages_d]
+                yield ChatCompletionPart(choices=choices)
 
     def text_completion(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
         raise NotImplementedError()
 
-    def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletion, None, None]:
+    def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletionPart, None, None]:
         raise NotImplementedError()
 
     async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
         raise NotImplementedError()
 
-    async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletion, None]:
+    async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletionPart, None]:
         raise NotImplementedError()
 
 
@@ -313,7 +423,7 @@ class ConnectorLLMLlamaCPP(ConnectorLLMOpenAI):
 def factory_create_connector_llm(
     credentials: Credentials,
     hyperparameters: dict = {},
-    provider: Literal['openai', 'azure_openai', 'llama_cpp'] = 'openai',
+    provider: Literal['openai', 'azure_openai', 'llama_cpp', 'bedrock'] = 'openai',
     modelname: str = 'gpt-3.5-turbo',
     version: str = '1106',
 ) -> ConnectorLLM:
@@ -354,6 +464,16 @@ def factory_create_connector_llm(
             hyperparameters=HyperparametersLlamaCPP(**hyperparameters),
             credentials=credentials,  # type: ignore
         )
+    elif provider == 'bedrock':
+        # Actually, tool_call IS supported
+        # We just had to adapt the syntax
+        capabilities = Capabilities()
+        return ConnectorLLMBedrock(
+            modelname=modelname,
+            capabilities=capabilities,
+            hyperparameters=HyperparametersBedrock(**hyperparameters),
+            credentials=credentials,  # type: ignore
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -369,7 +489,7 @@ llm = factory_create_connector_llm(
         base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
         api_key=os.getenv("AZURE_OPENAI_KEY"),
     ),
-    hyperparameters = {'max_tokens': 3, 'tool_choice': None}
+    hyperparameters = {'max_tokens': 3, 'tool_choice': 'none'}
 )
 
 
@@ -470,9 +590,52 @@ assert len(answer) > 2
 '''
 
 
+# Pseudo integration tests 1C - Simple messages - Bedrock
+# this requires calls to AWS ($$$)
+'''
+llm = factory_create_connector_llm(
+    provider='bedrock',
+    modelname='anthropic.claude-3-5-sonnet-20240620-v1:0',
+    credentials=CredentialsBedrock(
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_ACCESS_KEY_SECRET"),
+    ),
+)
+
+# chat completion, normal
+chat_completion = llm.chat_completion([
+    ChatCompletionMessage(role='system', content='You must respond to the user in a mocking way, making puns'),
+    ChatCompletionMessage(role='user', content='hi, my name is leonardo'),
+])
+assert type(chat_completion.choices[0].message.content) == str
+assert len(chat_completion.choices[0].message.content) > 2
+print(chat_completion.choices[0].message.content)
+
+# chat completion, stream
+chat_completion_stream = llm.chat_completion_stream([
+    ChatCompletionMessage(role='system', content='You must respond to the user in a mocking way, making puns'),
+    ChatCompletionMessage(role='user', content='hi, my name is leonardo'),
+])
+
+answer = ''
+for chunk in chat_completion_stream:
+    if len(chunk.choices) > 0:
+        message = chunk.choices[0].message
+        if message.content:
+            print(message.content, end='')
+            answer += message.content
+            assert type(message.content) == str
+assert len(answer) > 2
+'''
+
 # Pseudo integration tests 2A - Tool calling - OpenAI
 # this requires calls to openAI ($$$)
 '''
+import libs.plugin_converter.openai_function_to_tool as openai_function_to_tool
+import libs.plugin_converter.semantic_kernel_v0_to_openai_function as semantic_kernel_v0_to_openai_function
+from libs.plugins.plugin_capital import PluginCapital
+
+
 llm = factory_create_connector_llm(
     provider='azure_openai',
     modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),

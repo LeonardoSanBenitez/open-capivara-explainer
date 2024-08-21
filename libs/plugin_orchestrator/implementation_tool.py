@@ -102,7 +102,7 @@ class OrchestratorWithTool(BaseModel):
                 f"Your decisions must always be made independently without seeking user assistance.\n"
                 f"Every action has a cost, so be smart and efficient. You'll be rewarded if you answer correctly and quickly.\n"
                 f"Aim to complete the goal in the least number of steps (aka function calls). Whenever you are ready to answer, use the function '{self.answer_function_name}'.\n"
-                f"Do not take more than {self.max_steps_recommended} steps to complete a task (including the function '{self.self.answer_function_name}').\n"
+                f"Do not take more than {self.max_steps_recommended} steps to complete a task (including the function '{self.answer_function_name}').\n"
                 f"If at step {self.max_steps_recommended - 1} you don't have all necessary information, answer the best you can with the information at hand.\n"
                 f"Always try to answer with as much useful information as you can.\n"
         )

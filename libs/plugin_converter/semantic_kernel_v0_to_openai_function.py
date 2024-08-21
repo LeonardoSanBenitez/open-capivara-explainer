@@ -118,9 +118,9 @@ def _create_wrapper_function(function_to_be_wrapped: Callable) -> Callable:
 
 def _generate_param_definition(param: dict) -> dict:
     if param['type'] == 'array':
-        return {'type': param['type'], 'items': {'type': 'string'}, 'description': param['description'], 'default': param['default_value']}
+        return {'type': param['type'], 'items': {'type': 'string'}, 'description': param['description']}  # , 'default': param['default_value']}
     else:
-        return {'type': param['type'], 'description': param['description'], 'default': param['default_value']}
+        return {'type': param['type'], 'description': param['description']}  # , 'default': param['default_value']}
 
 
 def generate_callables(plugins: List[Tuple[KernelBaseModel, str]]) -> Dict[str, Callable]:
@@ -153,6 +153,10 @@ def generate_definitions(
     References:
     https://community.openai.com/t/schema-for-defining-arrays-in-function/271690/2
     https://github.com/microsoft/semantic-kernel/blob/python-0.5.0.dev/python/semantic_kernel/plugin_definition/kernel_function_context_parameter_decorator.py
+
+    # Default values and optional parameters
+    OpenAI does not support (anymore?) default values for parameters.
+    TODO: The function `generate_callables` should be refactored to handle optional parameters.
     '''
     definitions = []
 

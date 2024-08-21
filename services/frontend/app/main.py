@@ -53,7 +53,7 @@ selected_alert_id = st.sidebar.radio("Select an Alert", alert_ids)
 #########################################################
 # Alert info
 selected_alert = capivara_get_alert(selected_alert_id)
-st.write("### " + selected_alert['title'])
+st.write("#### Title: " + selected_alert['title'])
 st.write(f"**Description:** {selected_alert['description']}")
 st.write(f"**Severity:** {selected_alert['severity']}")
 st.write(f"**State:** {selected_alert.get('state', 'new')}")
