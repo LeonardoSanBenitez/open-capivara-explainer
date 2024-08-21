@@ -34,6 +34,8 @@ Incomplete mapping model->capabilities
 Incomplete hyperparameter support
 
 Tool calling only supported at OpenAI (even though bedrock supports it too)
+
+network failures or other random failures
 '''
 
 
@@ -267,6 +269,8 @@ class ConnectorLLMBedrock(BaseModel, ABC):
 
     def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
         normal_messages, system_messages = self._separate_messages(messages)
+        # print('>>>>>>>>>>>>>', normal_messages)
+        # print('>>>>>>>>>>>>>', system_messages)
         chat_completion = self.client.converse(
             modelId=self.modelname,
             messages=normal_messages,
