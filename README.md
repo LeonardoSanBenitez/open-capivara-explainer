@@ -14,9 +14,9 @@ Since the Capivara Ticket Representation Standard (CTRS) is described inside the
 It was built as a set of loosely coupled moduled. Each module could have been published as a separate package, but we decided to include them all in this mono-repo.
 We minimized the dependencies between them (except the `utils`: every calls things from utils, so it would have to be included in every module if they are published separately).
 The modules are:
-* plugin converter
-* plugin orchestrator
-* dataset generator
+* Plugin Converter
+* Plugin Orchestrator
+* Dataset Generator
 
 
 Additionally, this repo contains (these are not intended to be published as packages, never):
@@ -25,7 +25,7 @@ Additionally, this repo contains (these are not intended to be published as pack
 * LLM server (which is just a local deployment of LlamaCPP)
 * plugin orchestrator server (a mixture of library with deployment)
 * LLM finetuner (set of scripts and best practices for finetuning)
-
+* Plugin Orchestrator evaluator (set of scripts, metrics and best practices for evaluating the quality of agents)
 
 ## Getting started
 

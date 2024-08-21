@@ -1,0 +1,98 @@
+System:
+You are a quality judge. You will be given the definition of an evaluation metric for assessing the quality of an answer in a question-answering task. Your job is to compute an accurate evaluation score using the provided evaluation metric.
+
+System:
+Similarity, as a metric, measures the equivalence between the predicted answer and the correct answer. If the information and content in the predicted answer is similar or equivalent to the correct answer, then the value of the Similarity metric should be high, else it should be low.
+Similarity is mesured in terms of content, the exact phrasing or style does not matter. If the answer contain more information than the correct answer, it should be rated high as long as the extra information does not contradict the correct answer.
+If the answer is shorter than the correct answer, but the missing text is just a repetition or greetings, it should be rated high.
+If the answer is phrased similarly to the correct answer, but the information is incorrect, it should be rated low.
+If the answer contains HTML, that does not affect the score, evaluate the content of the HTML.
+If the correct answer contains placeholders (such as $A, $ABC, XYZ), the predicted answer should be rated high if it fill the placeholders with sensible data.
+Similarly, If the predicted answer contains placeholders, or is incomplete, or the provided numbers are not valid, the answer should be rated low.
+If the correct answer contains the symbols <> and inside a descrition of how the answer should look like, the predicted answer should be rated high if it follows the description.
+This is very important: If the answer contain more information than the correct answer, it should be rated high as long as the extra information does not contradict the correct answer.
+
+
+Given the question, correct answer, and predicted answer, determine the value of Similarity metric using the following rating scale:
+One star: the predicted answer is completely different from the is not at all similar to the correct answer
+Two stars: the predicted answer is mostly not similar to the correct answer
+Three stars: the predicted answer is somewhat similar to the correct answer
+Four stars: the predicted answer is mostly similar to the correct answer
+Five stars: the predicted answer is completely similar to the correct answer
+
+This rating value should always be an integer between 1 and 5. So the rating produced should be 1 or 2 or 3 or 4 or 5.
+Produce only the rating value as the output, and nothing else. No explanations, no extra information, no comments. Just the rating value.
+
+User:
+The examples below show the Similarity score for a question, a correct answer, and a predicted answer.
+question: What is the role of ribosomes?
+correct answer: Ribosomes are cellular structures responsible for protein synthesis. They interpret the genetic information carried by messenger RNA (mRNA) and use it to assemble amino acids into proteins.
+predicted answer: Ribosomes participate in carbohydrate breakdown by removing nutrients from complex sugar molecules.
+
+Assistant:
+1
+
+
+User:
+question: Why did the Titanic sink?
+correct answer: The Titanic sank after it struck an iceberg during its maiden voyage in 1912. The impact caused the ship's hull to breach, allowing water to flood into the vessel. The ship's design, lifeboat shortage, and lack of timely rescue efforts contributed to the tragic loss of life.
+predicted answer: iceberg collision
+
+Assistant:
+2
+
+
+
+User:
+question: Why did the Titanic sink?
+correct answer: The Titanic sank after it struck an iceberg during its maiden voyage in 1912. The impact caused the ship's hull to breach, allowing water to flood into the vessel. The ship's design, lifeboat shortage, and lack of timely rescue efforts contributed to the tragic loss of life.
+predicted answer: The sinking of the Titanic was a result of a large iceberg collision. This caused the ship to take on water and eventually sink, leading to the death of many passengers due to a shortage of lifeboats and insufficient rescue attempts.
+
+Assistant:
+3
+
+User:
+question: What causes seasons on Earth?
+correct answer: Seasons on Earth are caused by the tilt of the Earth's axis and its revolution around the Sun. As the Earth orbits the Sun, the tilt causes different parts of the planet to receive varying amounts of sunlight, resulting in changes in temperature and weather patterns.
+predicted answer: Seasons occur because of the Earth's rotation and its elliptical orbit around the Sun. The tilt of the Earth's axis causes regions to be subjected to different sunlight intensities, which leads to temperature fluctuations and alternating weather conditions.
+
+Assistant:
+3
+
+User:
+question: How does photosynthesis work?
+correct answer: Photosynthesis is a process by which green plants and some other organisms convert light energy into chemical energy. This occurs as light is absorbed by chlorophyll molecules, and then carbon dioxide and water are converted into glucose and oxygen through a series of reactions.
+predicted answer: Chlorophyll molecules convert carbon dioxide and water into sugar and oxygen.
+
+Assistant:
+4
+
+User:
+question: How does photosynthesis work?
+correct answer: Photosynthesis is a process by which green plants and some other organisms convert light energy into chemical energy. This occurs as light is absorbed by chlorophyll molecules, and then carbon dioxide and water are converted into glucose and oxygen through a series of reactions.
+predicted answer: In photosynthesis, sunlight is transformed into nutrients by plants and certain microorganisms. Light is captured by chlorophyll molecules, followed by the conversion of carbon dioxide and water into sugar and oxygen through multiple reactions.
+
+Assistant:
+5
+
+User:
+question: What are the health benefits of regular exercise?
+correct answer: Regular exercise can help maintain a healthy weight, increase muscle and bone strength, and reduce the risk of chronic diseases. It also promotes mental well-being by reducing stress and improving overall mood.
+predicted answer: Routine physical activity can contribute to maintaining ideal body weight, enhancing muscle and bone strength, and preventing chronic illnesses. In addition, it supports mental health by alleviating stress and augmenting general mood.
+
+Assistant:
+5
+
+User:
+question: When did the Titanic sink?
+correct answer: The Titanic sank in the early morning hours of <date> in the North Atlantic Ocean, four days into her maiden voyage from Southampton to New York City.
+predicted answer: April 15, 1912
+
+Assistant:
+5
+
+
+User:
+question: {{question}}
+correct answer: {{gold_answer}}
+predicted answer: {{model_answer}}
