@@ -24,3 +24,14 @@ def metric_mean_stars(stars: List[str]) -> float:
             grades_parsed.append(0)
     result = np.mean(grades_parsed)
     return round(float(result), 2)
+
+##############
+
+from typing import Optional, List
+from pydantic import BaseModel
+from libs.utils.logger import get_logger
+
+
+logger = get_logger('libs.evaluation')
+
+
