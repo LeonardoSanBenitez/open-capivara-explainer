@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Type, Tuple, Literal, Any
+from typing import Dict, List, Type, Tuple, Literal, Any, Optional
 from unidecode import unidecode
 import csv
 import shutil
@@ -16,20 +16,63 @@ from libs.plugin_orchestrator_evaluator import SkaylinkAgent
 logger = get_logger('libs.evaluation')
 
 
-def load_eval_dataset(dataset_path: str) -> pd.DataFrame:
+def pd_duplicate_rows(df: pd.DataFrame, duplication_key: str, n: int) -> pd.DataFrame:
+    '''
+    If the value of <duplication_key> is non-nan (anything that is filled, except empty strings), then to duplicate that row n times
+
+    No side effects
+    '''
+    assert n > 1, "Multiplier should be at least 2"
+    assert df.shape[0] > 0, "Empty DataFrame"
+    mask = (df[duplication_key].notna()) & (df[duplication_key] != '') & (df[duplication_key] != False) & (df[duplication_key] != 'False')  # noqa
+    duplicated_df = df[mask].reindex(df[mask].index.repeat(n-1)).reset_index(drop=True)  # -1 because the original row is concatenated in the end
+    result_df = pd.concat([df, duplicated_df], ignore_index=True)
+    result_df = result_df.sample(frac=1).reset_index(drop=True)  # suffle
+    return result_df
+
+
+def load_eval_dataset(
+    dataset_path: str,
+    row_limit: Optional[int] = None,
+    remove_out_of_scope: bool = True,
+    filter_areas: Optional[List[str]] = None,
+    filter_difficulty: Optional[List[str]] = None,
+    super_important_multiplier: int = 3,
+) -> pd.DataFrame:
     '''
     Side effect: none
     Idempotent: yes
+
+    @param filter_areas: list of areas to filter (only areas that start with any of those strings will be included); if None, don't filter
+    @param filter_difficulty: list of difficulties to filter (only exact matches will be included); if None, don't filter
+    @param super_important_multiplier: how many times each super important question should be repeated
     '''
     # TODO:
     # add filters (like "only area=chitchat" or "difficulty=easy")
-    # row limit (eval at most n rows)
     # super_important multiplier (repeat the rows that are super important)
-    eval_dataset = pd.read_csv(dataset_path)
-    eval_dataset = eval_dataset[~eval_dataset['out_of_scope_for_now']]
-    eval_dataset.shape[0] > 0
-    eval_dataset.shape[1] >= 7
-    return eval_dataset
+    df = pd.read_csv(dataset_path)
+    logger.info(f"Before filtering, evaluation set contains {df.shape[0]} rows")
+    if remove_out_of_scope:
+        df = df[~df['out_of_scope_for_now']]
+    if filter_areas is not None:
+        assert len(filter_areas) > 0
+        df['area'] = df['area'].str.strip().str.lower().apply(unidecode)
+        df = df[df['area'].str.startswith(tuple(filter_areas))]
+    if filter_difficulty is not None:
+        assert len(filter_difficulty) > 0
+        df['difficulty'] = df['difficulty'].str.strip().str.lower().apply(unidecode)
+        df = df[df['difficulty'].isin(filter_difficulty)]
+    if super_important_multiplier > 1 and df['super_important'].sum()>0:
+        logger.info(f"Before expanding super-important, evaluation set contains {df.shape[0]} rows")
+        df = pd_duplicate_rows(df.copy(), 'super_important', super_important_multiplier)
+        logger.info(f"After expanding super-important, evaluation set contains {df.shape[0]} rows")
+    if row_limit:
+        assert row_limit > 0
+        df = df.head(row_limit)
+
+    assert df.shape[0] > 0
+    assert df.shape[1] >= 7
+    return df
 
 
 def add_inferences(eval_dataset: pd.DataFrame, agent_class: Type[SkaylinkAgent]) -> pd.DataFrame:
@@ -76,6 +119,8 @@ def add_evaluation_scores(
     '''
     Side effect: calls LLM
     Idempotent: yes (but probabilistic)
+
+    Metric values are returned in column <metric>, as integers
     '''
     assert "question" in eval_dataset_with_inference.columns
     assert "area" in eval_dataset_with_inference.columns
