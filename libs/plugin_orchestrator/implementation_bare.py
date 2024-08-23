@@ -2,7 +2,7 @@ from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator,
 from pydantic import model_validator, computed_field
 
 
-from libs.utils.connector_llm import ConnectorLLM, ChatCompletionMessage, ChatCompletionMessageResponse, OpenaiFunctionCall
+from libs.utils.connector_llm import ChatCompletionMessage, ChatCompletionMessageResponse, ChatCompletionMessageResponsePart
 from libs.utils.prompt_manipulation import DefinitionOpenaiTool
 from libs.utils.json_resilient import json_loads_resilient
 from libs.plugin_orchestrator.implementation_tool import OrchestratorWithTool, logger
@@ -138,30 +138,27 @@ class OrchestratorBare(OrchestratorWithTool):
         return function_descriptions.strip()
 
     async def _chat_step(self, current_step_messages: List[ChatCompletionMessage]) -> ChatCompletionMessageResponse:
-        '''
-        One interaction with the LLM, sending the prompt
-        This step calls the LLM, potentially generating costs and other side effects, but do not modify any internal state
-        @param current_step_messages: The prompt to be sent to the LLM
-        '''
-        try:
-            chat_completion = await self.connection.chat_completion_async(
-                messages=current_step_messages,
-                tool_definitions=[],  # The tools are set in the _prompt_orchestrator_system, therefore are not needed here
-            )
-            assert len(chat_completion.choices) > 0
-            assert chat_completion.choices[0].message.tool_calls is None
-            assert chat_completion.choices[0].message.content is not None
-            assert len(chat_completion.choices[0].message.content) > 0
-            return chat_completion.choices[0].message
+        # print('>>>>>>>>> SENDING PROMPT TO AI: ', current_step_messages)
+        chat_completion = await self.connection.chat_completion_async(
+            messages=current_step_messages,
+            tool_definitions=[],  # The tools are set in the _prompt_orchestrator_system, therefore are not needed here
+        )
+        assert len(chat_completion.choices) > 0
+        assert chat_completion.choices[0].message.tool_calls is None
+        assert chat_completion.choices[0].message.content is not None
+        assert len(chat_completion.choices[0].message.content) > 0
+        # print('>>>>>>>>> RAW RESPONSE:', chat_completion.choices[0].message)
+        return chat_completion.choices[0].message
 
-        except Exception as e:
-            if "The API deployment for this resource does not exist" in str(e):
-                # This happens only with AzureOpenAI LLMs
-                # We rewrite because the error is unclear
-                # TODO: Maybe this should not be done here...
-                raise Exception("Please fill in the deployment name of your Azure OpenAI resource gpt-4 model.")
-            else:
-                raise e
+    async def _chat_step_stream(self, current_step_messages: List[ChatCompletionMessage]) -> AsyncGenerator[ChatCompletionMessageResponsePart, None]:
+        chat_completion_stream = self.connection.chat_completion_stream_async(
+            messages=current_step_messages,
+            tool_definitions=[],
+        )
+        async for chunk in chat_completion_stream:  # type: ignore  # TODO: mypy says I should use await above... but if I do it doesn't work
+            if len(chunk.choices) > 0:
+                if chunk.choices[0].message is not None:
+                    yield chunk.choices[0].message
 
 
 # GPT3
@@ -189,7 +186,8 @@ orchestrator = OrchestratorBare(
     prompt_app_user='What is the capital of france?',
 )
 
-r = await orchestrator.run()
+r = await orchestrator.run_async()
+#r = orchestrator.run()
 print(r)
 print('\n\n' + '-'*30 + '\n\n')
 assert type(r.answer) == str

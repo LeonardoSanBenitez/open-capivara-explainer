@@ -104,7 +104,7 @@ def add_inferences(eval_dataset: pd.DataFrame, agent_class: Type[SkaylinkAgent])
         assert type(model_answer) == str
         assert len(model_answer) > 0
         # TODO: Add graph placeholder
-        eval_dataset_with_inference.loc[index, 'model_answer'] = model_answer
+        eval_dataset_with_inference.loc[index, 'model_answer'] = model_answer  # type: ignore
 
     assert eval_dataset.shape[0] == eval_dataset_with_inference.shape[0]
     assert eval_dataset.shape[1] == eval_dataset_with_inference.shape[1] - 1
@@ -144,7 +144,7 @@ def add_evaluation_scores(
         chat_completion = llm.chat_completion(parsed_conversation)
         score = chat_completion.choices[0].message.content
         # score = random.choice(['1', '2', '3', '4', '5'])
-        results.loc[index, metric] = score
+        results.loc[index, metric] = score  # type: ignore
 
     # Cleaning
     logger.info(f"For metric {metric}, {(results[metric].str.len() != 1).sum()} tests failed")

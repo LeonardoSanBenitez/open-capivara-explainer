@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 import logging
 import uuid
 from pydantic import BaseModel, Field
@@ -21,10 +21,22 @@ class Visualization(BaseModel):
     config: Optional[dict] = None
 
 
+class IntermediateResult(BaseModel):
+    step: int
+    status_code: int
+    function_name: str
+    function_arguments: dict
+    result: str
+    message: str
+    timestamp: int
+    citation_id: Optional[str]
+
+
 class ValidatedAnswer(BaseModel):
     answer: str
     citations: list[Citation] = []
     visualizations: list[Visualization] = []
+    intermediate_results: List[IntermediateResult] = []
 
     def to_message(self) -> ChatCompletionMessage:
         '''
@@ -37,6 +49,7 @@ class ValidatedAnswerPart(BaseModel):
     answer: Optional[str] = None
     citations: Optional[list[Citation]] = None
     visualizations: Optional[list[Visualization]] = None
+    intermediate_results: Optional[List[IntermediateResult]] = None
 
 
 def default_answer_validator(result: dict) -> ValidatedAnswer:

@@ -1,12 +1,22 @@
-from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator, Tuple
+from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator, Tuple, Generator
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 import hashlib
 import time
+import asyncio
+import nest_asyncio
 
 from libs.utils.logger import get_logger
 from libs.utils.prompt_manipulation import count_message_tokens, count_string_tokens, create_chat_message
-from libs.plugin_orchestrator.answer_validation import ValidatedAnswer, ValidatedAnswerPart, Citation, default_answer_validator
-from libs.utils.connector_llm import ConnectorLLM, ChatCompletionMessage, ChatCompletionMessageResponse, OpenaiFunctionCall
+from libs.plugin_orchestrator.answer_validation import ValidatedAnswer, ValidatedAnswerPart, Citation, IntermediateResult, default_answer_validator
+from libs.utils.connector_llm import (
+    ConnectorLLM,
+    ChatCompletionMessage,
+    ChatCompletionMessageResponse,
+    OpenaiFunctionCall,
+    ChatCompletionMessageResponsePart,
+    OpenAIToolCallPart,
+    OpenaiFunctionCallPart
+)
 from libs.utils.prompt_manipulation import DefinitionOpenaiTool
 from libs.utils.json_resilient import json_loads_resilient
 
@@ -40,6 +50,7 @@ class SecondaryChannelDefinition(BaseModel):
     send_func: Callable[[Dict[str, Any]], None]  # Any function that follows this signature is accepted
 
 
+# TODO: separate this into OrchestratorBase (from which everyone inherits) and OrchestratorWithTool
 class OrchestratorWithTool(BaseModel):
     '''
     Used to answer one question.
@@ -52,7 +63,8 @@ class OrchestratorWithTool(BaseModel):
     function that will be applied after the answer is generated.
     Receives an unstructured dict (dependant of the 'answer' definition) and returns a ValidatedAnswer.
     If it raises an exception, this will NOT be caught by the Orchestrator, and will be passed to the caller.
-    Serves both as validator and parsing
+    Serves both as validator and parsing.
+    The validation function do not need to set `intermediate_results`, this will be set by the orchestrator
 
     # Considerations about multiple/structured outputs
     handled with answer_validator
@@ -68,6 +80,22 @@ class OrchestratorWithTool(BaseModel):
     Can be used as hooks/callbacks.
     The definition includes a function written by you (the caller), where you can define how to integrate with your service.
     Defined in the parameter `secondary_channels: List[SecondaryChannelDefinition]`.
+
+    # Considerations about streaming
+    Poorly implemented
+    If you can, use the non-streaming response, and add another LLM just to generate the final response (which that one is streaming)
+    Or use secondary channels
+
+    # Consideration about the synchronous interface
+    This class is optimized for the async methods.
+    The sync method have the danger of interfering with your existing event loop (it modifies your loop using nest_asyncio), plus have uncessary overhead; Avoid them if possible.
+
+    # Known limitations
+    do not handle abrut stops (finish_reason is not checked)
+
+    422 not handled
+
+    TODO: citations and intermediate results are somewhat redundant... no?
     '''
     connection: ConnectorLLM
 
@@ -92,7 +120,8 @@ class OrchestratorWithTool(BaseModel):
     answer_validator: Callable[[dict], ValidatedAnswer] = default_answer_validator
     answer_function_name: str = 'answer'
     _citations: List[Citation] = PrivateAttr(default=[])
-    _called_functions: List[str] = PrivateAttr(default=[])
+    _called_functions: List[str] = PrivateAttr(default=[])  # Just the hash
+    _intermediate_results: List[IntermediateResult] = PrivateAttr(default=[])
 
     @model_validator(mode='after')
     def _model_validator(self):
@@ -123,6 +152,7 @@ class OrchestratorWithTool(BaseModel):
 
         This step have no side effect
         '''
+        assert response.content is None or response.content == '', 'There is something in the response, but only tool calls are expected'
         if response.tool_calls is not None and len(response.tool_calls) > 0:
             logger.info('Function calling detected by: native API feature')
             assert response.tool_calls[0].function is not None
@@ -134,10 +164,6 @@ class OrchestratorWithTool(BaseModel):
             else:
                 assert type(function_arguments) == dict
                 return True, function_call.name, function_arguments
-        elif response.content is not None and response.content != '':
-            logger.warning('Function calling detected by: custom implementation (not yet implemented)')
-            # TODO
-            return False, None, None
         else:
             return False, None, None
 
@@ -203,28 +229,37 @@ class OrchestratorWithTool(BaseModel):
         '''
         One interaction with the LLM, sending the prompt
         This step calls the LLM, potentially generating costs and other side effects, but do not modify any internal state
+        TODO: The only reason this is a separate function is to make `run` reusable for the implementation_bare (where it tool_definitions as to be [])... maybe there is a better way
         @param current_step_messages: The prompt to be sent to the LLM
         '''
-        try:
-            chat_completion = await self.connection.chat_completion_async(
-                messages=current_step_messages,
-                tool_definitions=self._tool_definitions_active,
-            )
-            assert len(chat_completion.choices) > 0
-            assert chat_completion.choices[0].message.tool_calls is not None
-            assert len(chat_completion.choices[0].message.tool_calls) > 0
-            return chat_completion.choices[0].message
+        # print('>>>>>>>>> SENDING PROMPT TO AI: ', current_step_messages)
+        chat_completion = await self.connection.chat_completion_async(
+            messages=current_step_messages,
+            tool_definitions=self._tool_definitions_active,
+        )
+        assert len(chat_completion.choices) > 0
+        assert chat_completion.choices[0].message.tool_calls is not None
+        assert len(chat_completion.choices[0].message.tool_calls) > 0
+        # print('>>>>>>>>> RAW RESPONSE:', chat_completion.choices[0].message)
+        return chat_completion.choices[0].message
 
-        except Exception as e:
-            if "The API deployment for this resource does not exist" in str(e):
-                # This happens only with AzureOpenAI LLMs
-                # We rewrite because the error is unclear
-                # TODO: Maybe this should not be done here...
-                raise Exception("Please fill in the deployment name of your Azure OpenAI resource gpt-4 model.")
-            else:
-                raise e
+    async def _chat_step_stream(self, current_step_messages: List[ChatCompletionMessage]) -> AsyncGenerator[ChatCompletionMessageResponsePart, None]:
+        '''
+        Basically the same as _chat_step
+        '''
+        chat_completion_stream = self.connection.chat_completion_stream_async(
+            messages=current_step_messages,
+            tool_definitions=self._tool_definitions_active,
+        )
+        async for chunk in chat_completion_stream:  # type: ignore  # TODO: mypy says I should use await above... but if I do it doesn't work
+            if len(chunk.choices) > 0:
+                if chunk.choices[0].message is not None:
+                    yield chunk.choices[0].message
 
     async def _call_function(self, function_name: str, function_arguments: dict) -> str:
+        '''
+        After this function is called, you can be sure that a new IntermediateResult was appended to self._intermediate_results
+        '''
         result_function: str = ''  # this is shown to the user through the secondary channels
         result_final: str = ''  # This is what is shown to the LLM, so it has to be nicely formatted
         result_status_code: int = -1
@@ -273,25 +308,30 @@ class OrchestratorWithTool(BaseModel):
             self._citations.append(citation)
             # TODO: include in the result_final something like: "to reference this result, use the id {citation_id}"
 
+        # Assemble final intermediate result
+        intermediate_result = IntermediateResult(
+            step=self._current_step - 1,
+            status_code=result_status_code,
+            function_name=function_name,
+            function_arguments=function_arguments,
+            result=result_function,
+            message=f'At step {self._current_step - 1}, executing {function_name}',  # TODO: the frontend should start using the other fields, and this field should be removed
+            timestamp=int(time.time()),
+            citation_id=citation_id,
+        )
+        self._intermediate_results.append(intermediate_result)
+
         # Send update to the secondary-channels
         # Should these updates be sent if the deduplication-check fails? If not, add an `if result_status_code != 202`
         for channel in filter(lambda x: x.update_type == 'every_step', self.secondary_channels):
             logger.info(f"Sending update to secondary channel {channel.name}, session {channel.session_id}")
-            channel.send_func({
-                'step': self._current_step - 1,
-                'status_code': result_status_code,
-                'function_name': function_name,
-                'function_arguments': function_arguments,
-                'result': result_function,
-                'sessionId': channel.session_id,
-                'message': f'At step {self._current_step - 1}, executing {function_name}',  # TODO: the frontend should start using the other fields, and this field should be removed
-                'timestamp': int(time.time()),
-                'citation_id': citation_id,
-            })
+            payload = intermediate_result.dict()
+            payload['sessionId'] = channel.session_id
+            channel.send_func(payload)
         assert type(result_final) == str
         return result_final
 
-    async def run(self) -> ValidatedAnswer:
+    async def run_async(self) -> ValidatedAnswer:
         self._full_message_history_for_debugging += self._prepare_prompt_step()
         while True:
             if self._current_step > self.max_steps_allowed:
@@ -300,12 +340,10 @@ class OrchestratorWithTool(BaseModel):
 
             # Send message to AI, get response
             current_step_messages = self._prepare_prompt_step()
-            # print('>>>>>>>>> SENDING PROMPT TO AI: ', current_step_messages)
             response: ChatCompletionMessageResponse = await self._chat_step(current_step_messages)
             self._full_message_history_for_debugging.append(response.to_message())
             self._current_step += 1
 
-            # print('>>>>>>>>> RAW RESPONSE:', response)
             is_function_calling, function_name, function_arguments = self._detect_function_call(response)
             if is_function_calling:
                 assert type(function_name) == str
@@ -320,6 +358,7 @@ class OrchestratorWithTool(BaseModel):
                     assert 'citations' not in function_arguments, "The 'citations' key is reserved for the answer_validator"
                     function_arguments['citations'] = self._citations
                     validated_answer = self.answer_validator(function_arguments)
+                    validated_answer.intermediate_results = self._intermediate_results
                     # TODO: test if answer is valid; if not, inform the LLM and ask ti to try again (currently, the validator can't communicate with the LLM)
                     self._full_message_history_for_debugging.append(validated_answer.to_message())
                     return validated_answer
@@ -341,8 +380,110 @@ class OrchestratorWithTool(BaseModel):
                 self.full_message_history.append(result_message)
                 self._full_message_history_for_debugging.append(result_message)
 
-    async def run_stream(self) -> AsyncGenerator[ValidatedAnswerPart, None]:  # type: ignore
-        # TODO
+    async def run_stream_async(self) -> AsyncGenerator[ValidatedAnswerPart, None]:  # type: ignore
+        # TODO: can we share as much code as possible wiht the non stream version?
+        self._full_message_history_for_debugging += self._prepare_prompt_step()
+        while True:
+            if self._current_step > self.max_steps_allowed:
+                logger.error(f"Exceeded the maximum number of steps allowed: {self.max_steps_allowed}")
+                raise MaxStepsExceededError(f"Exceeded the maximum number of steps allowed: {self.max_steps_allowed}")
+
+            # Send message to AI, get response
+            current_step_messages = self._prepare_prompt_step()
+            response_stream = self._chat_step_stream(current_step_messages)
+
+            # Accumulation or response
+            response_accumulated: ChatCompletionMessageResponsePart = ChatCompletionMessageResponsePart(content='', role='', tool_calls=[])
+            async for chunk in response_stream:
+                assert type(chunk) == ChatCompletionMessageResponsePart
+                assert response_accumulated.content is not None
+                assert response_accumulated.role is not None
+                assert response_accumulated.tool_calls is not None
+                if chunk.content is not None:
+                    response_accumulated.content += chunk.content
+                if (chunk.role is not None) and (response_accumulated.role not in ['user', 'assistant', 'system']):
+                    response_accumulated.role += chunk.role
+
+                if (chunk.tool_calls is not None) and (len(chunk.tool_calls) > 0):
+                    # A tool is being called
+                    if chunk.tool_calls[0].id is not None:
+                        # The tool is new
+                        assert chunk.tool_calls[0].type is not None
+                        assert chunk.tool_calls[0].function is not None
+                        assert chunk.tool_calls[0].function.name is not None
+                        assert chunk.tool_calls[0].function.arguments is not None
+                        response_accumulated.tool_calls.append(OpenAIToolCallPart(
+                            id=chunk.tool_calls[0].id,
+                            type=chunk.tool_calls[0].type,  # Assumes `type` if fully set when the function is first called, which may not be true
+                            function = OpenaiFunctionCallPart(
+                                name=chunk.tool_calls[0].function.name,  # Assumes `name` if fully set when the function is first called, which may not be true
+                                arguments=chunk.tool_calls[0].function.arguments,  # This will receive more details later, so we don't assume it is fully set
+                            )
+                        ))
+                    elif (chunk.tool_calls[0].function is not None) and (chunk.tool_calls[0].function.arguments is not None):
+                        # The previous called tool received more arguments details
+                        last_called_tool = response_accumulated.tool_calls[-1]
+                        assert last_called_tool.function is not None
+                        assert last_called_tool.function.name is not None
+                        assert last_called_tool.function.arguments is not None
+                        last_called_tool.function.arguments += chunk.tool_calls[0].function.arguments
+                        if last_called_tool.function.name == self.answer_function_name:
+                            # TODO: validate this one chunk
+                            ####### assert 'citations' not in function_arguments, "The 'citations' key is reserved for the answer_validator"
+                            ####### function_arguments['citations'] = self._citations
+                            ####### validated_answer = self.answer_validator(function_arguments)
+                            ####### # TODO: test if answer is valid; if not, inform the LLM and ask ti to try again (currently, the validator can't communicate with the LLM)
+                            ####### self._full_message_history_for_debugging.append(validated_answer.to_message())
+                            validated_answer_chunk = ValidatedAnswerPart(answer=chunk.tool_calls[0].function.arguments)
+                            yield validated_answer_chunk
+
+            print('>>>>>>>>>>>>>>> FULLY ACCUMULATED ANSWER', response_accumulated)
+            response = ChatCompletionMessageResponse(**response_accumulated.dict())
+            self._full_message_history_for_debugging.append(response.to_message())
+            self._current_step += 1
+
+            is_function_calling, function_name, function_arguments = self._detect_function_call(response)
+            if is_function_calling:
+                assert type(function_name) == str
+                assert type(function_arguments) == dict
+                action_request = f"At step {self._current_step - 1} the function {function_name} was requested, with args = {function_arguments}"
+                logger.info(action_request)
+                action_request_message = ChatCompletionMessage(role='system', content=action_request)
+                self.full_message_history.append(action_request_message)
+                self._full_message_history_for_debugging.append(action_request_message)
+
+                if function_name == self.answer_function_name:
+                    # Response was already streamed, so there is nothing else to be done
+                    break
+                elif function_name in self.tool_callables:
+                    action_result = await self._call_function(function_name, function_arguments)
+                    assert len(self._intermediate_results) > 0
+                    yield ValidatedAnswerPart(intermediate_results = [self._intermediate_results[-1]])
+                else:
+                    action_result = f"Failure: unknown function '{function_name}'. Please refer to available functions defined in functions parameter."
+
+                # Append action result to the message history
+                assert type(action_result) == str
+                action_result_message = ChatCompletionMessage(role='system', content=action_result)
+                self.full_message_history.append(action_result_message)
+                self._full_message_history_for_debugging.append(action_result_message)
+                logger.info(f"result: {action_result}")
+            else:
+                result = f"At step {self._current_step - 1} the wrong syntax was used to call a function. The wrong syntax used was: {response.content}"
+                logger.warning(result)
+                result_message = ChatCompletionMessage(role='system', content=f'{result}.\n\nPlease try again.')
+                self.full_message_history.append(result_message)
+                self._full_message_history_for_debugging.append(result_message)
+
+    def run(self) -> ValidatedAnswer:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            nest_asyncio.apply(loop)
+
+        return asyncio.run(self.run_async())
+
+    def run_stream(self) -> Generator[ValidatedAnswerPart, None, None]:  # type: ignore
+        # TODO: this is not implemented at all, and I have no intention of doing it soon
         pass
 
 
@@ -369,7 +510,8 @@ orchestrator = OrchestratorWithTool(
     prompt_app_system='You are an AI assistant whose goal is to answer the user question.',
     prompt_app_user='What is the capital of brasil?',
 )
-r = await orchestrator.run()
+r = await orchestrator.run_async()
+#r = orchestrator.run()
 print(r)
 assert type(r.answer) == str
 assert len(r.answer) > 4

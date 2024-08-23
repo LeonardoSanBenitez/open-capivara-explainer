@@ -3,7 +3,9 @@ import json
 import random
 import time
 import requests
+from typing import List
 from typing import Generator
+from libs.plugin_orchestrator.answer_validation import ValidatedAnswerPart
 
 # Sample data
 alert_ids = ["dc2a", "981a", "b3f7"]
@@ -35,15 +37,30 @@ def capivara_update_conversation_copilot(id: str, conversation: list) -> None:
     assert all([r[0] == 200 for r in response.json()])
 
 def response_generator() -> Generator[str, None, None]:
+    '''
     response = random.choice(
         [
-            "Hello there! How can I assist you today?",
             "Hi, human! Is there anything I can help you with?",
             "Do you need help?",
         ]
     )
     for word in response.split():
         yield word + " "
+        time.sleep(0.05)
+    '''
+
+    responses: List[ValidatedAnswerPart] = [
+        ValidatedAnswerPart(answer='Hello '),
+        ValidatedAnswerPart(answer='there!'),
+        ValidatedAnswerPart(answer=' How '),
+        ValidatedAnswerPart(answer='can I '),
+        ValidatedAnswerPart(answer='assist'),
+        ValidatedAnswerPart(answer=' you'),
+        ValidatedAnswerPart(answer=' today'),
+        ValidatedAnswerPart(answer='?'),
+    ]
+    for response in responses:
+        yield response.answer
         time.sleep(0.05)
 
 #########################################################

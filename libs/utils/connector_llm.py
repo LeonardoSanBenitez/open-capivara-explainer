@@ -155,8 +155,9 @@ class ChatCompletionMessageResponse(BaseModel):
         elif (self.content is None) and (self.tool_calls is not None):
             message = ChatCompletionMessage(role=self.role, content=json.dumps([t.dict() for t in self.tool_calls]))
         else:
-            logger.warning('Both content and tool_calls are not None. Response will contain only content.')
             assert type(self.content) == str
+            if len(self.content) > 0:
+                logger.warning('Both content and tool_calls are not None. Response will contain only content.')
             message = ChatCompletionMessage(role=self.role, content=self.content)
 
         return message
@@ -220,7 +221,7 @@ class ConnectorLLM(BaseModel, ABC):
         pass
 
     @abstractmethod
-    async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletion, None]:
+    async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletionPart, None]:
         pass
 
     @abstractmethod
@@ -249,7 +250,7 @@ class ConnectorLLMBedrock(BaseModel, ABC):
     @computed_field  # type: ignore
     @cached_property
     def client(self) -> Any:  # -> botocore.client.BedrockRuntime:
-        import boto3  # noqa
+        import boto3  # type: ignore  # noqa
         return boto3.client(
             'bedrock-runtime',
             **self.credentials.dict()
