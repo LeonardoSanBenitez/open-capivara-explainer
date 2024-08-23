@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional
 from fastapi import FastAPI
 from libs.utils.logger import setup_loggers
-from libs.CTRS.models import Alert, AlertUpdate, Message
+from libs.CTRS.models import Alert, AlertUpdate, Message, IntermediateResult
 
 
 setup_loggers()
@@ -34,10 +34,20 @@ mock_database: List[Alert] = [
         ],
         conversation_copilot = [
             Message(user="user", message="What have this customer already bought?"),
-            Message(user="assistant", message="The customer have ordered the following items in the past: IPS Natural Die Material ND1, Untersuchungshandschuhe Nitril light lemon Gr. M, Antiseptica r.f.u. Händedesinfektion Flasche 1 Liter"),
+            Message(
+                user="assistant",
+                intermediate_results=[IntermediateResult(step=1, status_code=200, function_name='PluginSAP_get_purchase_orders', function_arguments={}, result='[{"deliveryDate": "2021-01-01", "totalAmount": 10000, "items": [{"materialId": "IPS Natural Die Material ND1", "quantity": 1}, {"materialId": "Untersuchungshandschuhe Nitril light lemon Gr. M", "quantity": 10}, {"materialId": "Antiseptica r.f.u. H\\u00e4ndedesinfektion Flasche 1 Liter", "quantity": 1}]}]', message='At step 1, executing PluginSAP_get_purchase_orders', timestamp=1724422907, citation_id='d01b7fd7')],
+                message="The customer have ordered the following items in the past: IPS Natural Die Material ND1, Untersuchungshandschuhe Nitril light lemon Gr. M, Antiseptica r.f.u. Händedesinfektion Flasche 1 Liter",
+            ),
             Message(user="user", message="Buy 100 of those gloves"),
-            Message(user="assistant", message="I have created a new order for 100 Untersuchungshandschuhe Nitril light lemon Gr. M"),
-
+            Message(
+                user="assistant",
+                intermediate_results=[
+                    IntermediateResult(step=1, status_code=200, function_name='PluginSAP_create_purchase_order', function_arguments={'amount': 100, 'material_id': 'Untersuchungshandschuhe Nitril light lemon Gr. M'}, result='Order placed successfully', message='At step 2, executing PluginSAP_create_purchase_order', timestamp=1724422907, citation_id='ed7a943b'),
+                    IntermediateResult(step=2, status_code=200, function_name='PluginServiceNow_close_ticket', function_arguments={}, result='Ticket closed successfully', message='At step 3, executing PluginServiceNow_close_ticket', timestamp=1724422908, citation_id='64e0a3b0'),
+                ],
+                message="I have created a new order for 100 Untersuchungshandschuhe Nitril light lemon Gr. M, and closed this ticket for you 🙂",
+            ),
         ],
     ),
 ]

@@ -75,10 +75,22 @@ class CriteriaResult(BaseModel):
     details: str
 
 
+class IntermediateResult(BaseModel):
+    step: int
+    status_code: int
+    function_name: str
+    function_arguments: dict
+    result: str
+    message: str
+    timestamp: int
+    citation_id: Optional[str]
+
+
 class Message(BaseModel):
     timestamp: int = Field(default_factory=lambda: int(time.time()))
     message: str
     user: str
+    intermediate_results: List[IntermediateResult] = []
 
 
 class Alert(BaseModel):
