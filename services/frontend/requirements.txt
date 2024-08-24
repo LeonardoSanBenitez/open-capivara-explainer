@@ -1,5 +1,5 @@
 altair
-pandas
+pandas~=2.2
 streamlit
 
 # Requirements that are actually from the libs, but I don't want to install here all libs requirements
@@ -10,3 +10,6 @@ openai~=1.39
 tiktoken~=0.4
 unidecode
 dateparser
+nest-asyncio~=1.6
+semantic-kernel==0.5.0.dev0
+tabulate~=0.9

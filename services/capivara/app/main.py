@@ -1,10 +1,11 @@
+import logging
 from typing import List, Tuple, Optional
 from fastapi import FastAPI
 from libs.utils.logger import setup_loggers
 from libs.CTRS.models import Alert, AlertUpdate, Message, IntermediateResult
 
 
-setup_loggers()
+setup_loggers(logging.INFO)
 app = FastAPI(debug=True)
 
 mock_database: List[Alert] = [
@@ -89,6 +90,7 @@ async def update_incidents(
     '''
     Partial updates for compose objects is not supported (if you pass a not none object, it is entirely updated)
     '''
+    logging.info('Called public-api-update-incidents')
     results: List[Tuple[int, Optional[str]]] = []
     for update in incident_updates:
         incidents = list(filter(lambda x: x.id == update.id, mock_database))
@@ -99,10 +101,11 @@ async def update_incidents(
         else:
             incident = incidents[0]
             # Iterate over all the non-none fields and update the incident
-            for field, value in update.dict().items():
-                if value is not None:
+            for field, value in update.dict(exclude_unset=True).items():
+                if value is not None or True:
                     setattr(incident, field, value)
             results.append((200, None))
+        logging.info(f'This alert is now: {incidents[0].json()}')
     return results
 
 
@@ -113,6 +116,7 @@ async def delete_incidents(
     '''
     Returns tuples with status code (following HTTP status codes) and error message (if any)
     '''
+    logging.info('Called public-api-delete-incidents')
     global mock_database
     mock_database = list(filter(lambda x: x.id not in incident_ids, mock_database))
     return [(200, None) for _ in incident_ids]

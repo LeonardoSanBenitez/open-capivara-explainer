@@ -104,6 +104,10 @@ class OrchestratorWithTool(BaseModel):
 
     422 not handled
 
+    400 not handled.
+    It returns something like:
+    BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766", 'type': None, 'param': 'prompt', 'code': 'content_filter', 'status': 400, 'innererror': {'code': 'ResponsibleAIPolicyViolation', 'content_filter_result': {'hate': {'filtered': False, 'severity': 'safe'}, 'jailbreak': {'filtered': True, 'detected': True}, 'self_harm': {'filtered': False, 'severity': 'safe'}, 'sexual': {'filtered': False, 'severity': 'safe'}, 'violence': {'filtered': False, 'severity': 'safe'}}}}}  # noqa
+
     TODO: citations and intermediate results are somewhat redundant... no?
 
     when streaming, `citations` is not included in the validated response
@@ -154,6 +158,15 @@ class OrchestratorWithTool(BaseModel):
             f"Call only one function per message.\n"
             f"Do not call the same function with the same arguments more than once, their outputs are deterministic."
         )
+
+    @staticmethod
+    def _allow_nesting_in_current_loop() -> None:
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                nest_asyncio.apply(loop)
+        except RuntimeError as e:
+            pass
 
     @staticmethod
     def _detect_function_call(response: ChatCompletionMessageResponse) -> Tuple[bool, Optional[str], Optional[Dict]]:
@@ -392,7 +405,7 @@ class OrchestratorWithTool(BaseModel):
                 self.full_message_history.append(result_message)
                 self._full_message_history_for_debugging.append(result_message)
 
-    async def run_stream_async(self) -> AsyncGenerator[ValidatedAnswerPart, None]:  # type: ignore
+    async def run_stream_async(self) -> AsyncGenerator[ValidatedAnswerPart, None]:
         # TODO: can we share as much code as possible wiht the non stream version?
         self._full_message_history_for_debugging += self._prepare_prompt_step()
         while True:
@@ -486,15 +499,19 @@ class OrchestratorWithTool(BaseModel):
                 self._full_message_history_for_debugging.append(result_message)
 
     def run(self) -> ValidatedAnswer:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            nest_asyncio.apply(loop)
-
+        self._allow_nesting_in_current_loop()
         return asyncio.run(self.run_async())
 
-    def run_stream(self) -> Generator[ValidatedAnswerPart, None, None]:  # type: ignore
-        # TODO: this is not implemented at all, and I have no intention of doing it soon
-        pass
+    def run_stream(self) -> Generator[ValidatedAnswerPart, None, None]:
+        self._allow_nesting_in_current_loop()
+
+        async def consume_stream():
+            # gather results from the async generator
+            return [chunk async for chunk in self.run_stream_async()]
+
+        chunks = asyncio.run(consume_stream())
+        for chunk in chunks:
+            yield chunk
 
 
 # Pseudo test
