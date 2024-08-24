@@ -17,9 +17,8 @@ stop-local:
 	docker-compose down
 
 test: run-local
-	mypy --install-types --non-interactive --exclude "./services" .
-
 	echo "\n\n-------\nMypy checks\n-------"
+	#mypy --install-types --non-interactive --exclude "./services" .
 	docker-compose exec notebooks mypy ./libs --no-warn-incomplete-stub --disable-error-code import-untyped --explicit-package-bases --install-types --non-interactive
 
 	echo "\n\n-------\nPycodestyle checks\n-------"

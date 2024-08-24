@@ -28,6 +28,7 @@ lxml
 datasets~=2.20
 pyarrow~=17.0
 faker~=27.0
+tabulate~=0.9
 
 ###################
 # General
