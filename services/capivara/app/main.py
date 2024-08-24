@@ -16,9 +16,15 @@ mock_database: List[Alert] = [
         severity = "Medium",
     ),
     Alert(
+        id = "8b66",
+        title = "Mpox question",
+        description = "Does you Antiseptica r.f.u. kill mpox?",
+        severity = "Low",
+    ),
+    Alert(
         id = "981a",
         title = "Help needed during installation",
-        description = "I'm having trouble installing the Clean Reinigungsgerät, could you send someone to help me?",
+        description = "I'm having trouble installing the Clean Reinigungsgerät, please send someone to help me",
         severity = "High",
         conversation_customer = [
             Message(user="customer", message="hello, any update?"),

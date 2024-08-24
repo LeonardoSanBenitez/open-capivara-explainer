@@ -22,7 +22,16 @@ services:
     # You can check if the download has completed by checking the file `models/.cache/llama.cpp/<name>.downloadInProgress`
     container_name: explainer-llm-server
     image: ghcr.io/ggerganov/llama.cpp:server
-    #command: ["--hf-repo", "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF", "--hf-file", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf", "--host", "0.0.0.0", "--port", "8080"]
+    command: ["--hf-repo", "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF", "--hf-file", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./models/.cache:/root/.cache
+      - ./models:/models
+    ports:
+      - "8080:8080"
+
+  llm-server-agent:
+    container_name: explainer-llm-server-agent
+    image: ghcr.io/ggerganov/llama.cpp:server
     #command: ["--lora-base", "TinyLlama/TinyLlama-1.1B-Chat-v1.0", "--lora", "/models/model_modified_quantized.gguf", "--host", "0.0.0.0", "--port", "8080"]
     command: ["--hf-repo", "LeonardoBenitez/capivara-plugin-orchestration", "--hf-file", "TinyLlama-1.1B-Chat-v1.0-LoRa-plugins_capital_v1.0/merged_quantized.q8_0.gguf", "--host", "0.0.0.0", "--port", "8080"]
     #command: ["--model", "/models/model_modified_merged_quantized.gguf", "--host", "0.0.0.0", "--port", "8080"]
@@ -30,8 +39,7 @@ services:
       - ./models/.cache:/root/.cache
       - ./models:/models
     ports:
-      - "8080:8080"
-
+      - "8081:8080"
 
   orchestrator-proxy:
     container_name: explainer-orchestrator-proxy

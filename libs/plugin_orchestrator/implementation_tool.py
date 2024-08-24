@@ -22,19 +22,7 @@ from libs.utils.json_resilient import json_loads_resilient
 
 
 '''
-TODO:
-handle more than one call in a single step
 
-support async tools and async secondary channels
-implement considary channel update types "at_finish" and "at_failure"
-strong typing for the parameters of send_func, one for each update_type
-Maybe also support something for streaming the answer, like update_type=every_chunk_of_answer
-
-early_stopping_method: if max_steps_allowed is reached, what to do
-Either 'force' or 'generate'
-
-
-currently there is no reasoning step (the LLM returns functionCalls immediatly after the user prompt)
 '''
 logger = get_logger('libs.plugin_orchestrator')
 
@@ -108,9 +96,25 @@ class OrchestratorWithTool(BaseModel):
     It returns something like:
     BadRequestError: Error code: 400 - {'error': {'message': "The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766", 'type': None, 'param': 'prompt', 'code': 'content_filter', 'status': 400, 'innererror': {'code': 'ResponsibleAIPolicyViolation', 'content_filter_result': {'hate': {'filtered': False, 'severity': 'safe'}, 'jailbreak': {'filtered': True, 'detected': True}, 'self_harm': {'filtered': False, 'severity': 'safe'}, 'sexual': {'filtered': False, 'severity': 'safe'}, 'violence': {'filtered': False, 'severity': 'safe'}}}}}  # noqa
 
-    TODO: citations and intermediate results are somewhat redundant... no?
-
     when streaming, `citations` is not included in the validated response
+
+    # TODO and possible improvements
+
+    citations and intermediate results are somewhat redundant... no?
+
+    handle more than one call in a single step?
+
+    support async tools and async secondary channels
+    implement considary channel update types "at_finish" and "at_failure"
+    strong typing for the parameters of send_func, one for each update_type
+    Maybe also support something for streaming the answer, like update_type=every_chunk_of_answer
+
+    early_stopping_method: if max_steps_allowed is reached, what to do
+    Either 'force' or 'generate'
+
+    currently there is no reasoning step (the LLM returns functionCalls immediatly after the user prompt)... is that ok?
+
+    count_message_tokens and count_string_tokens should be a method of the connection
     '''
     connection: ConnectorLLM
 

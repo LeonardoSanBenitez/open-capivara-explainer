@@ -5,7 +5,7 @@ import requests
 from typing import List, Literal, Union, Generator
 
 from libs.CTRS.models import Alert, Message
-from libs.utils.connector_llm import factory_create_connector_llm, CredentialsOpenAI
+from libs.utils.connector_llm import factory_create_connector_llm, CredentialsOpenAI, ChatCompletionPart, ChatCompletionMessage
 from libs.plugin_orchestrator.answer_validation import ValidatedAnswerPart, IntermediateResult
 from libs.plugin_orchestrator.implementation_tool import OrchestratorWithTool
 from libs.plugin_orchestrator.implementation_bare import OrchestratorBare
@@ -19,7 +19,7 @@ import libs.plugin_converter.openai_function_to_tool as openai_function_to_tool
 
 # Sample data
 # Should match what is on the capivara mock DB
-alert_ids = ["dc2a", "981a", "b3f7"]
+alert_ids = ["dc2a", "8b66", "981a", "b3f7"]
 
 def capivara_get_alert(id: str) -> Alert:
     '''
@@ -78,7 +78,18 @@ def generate_streamlit_writtables(message: Message) -> List[Union[str, dict]]:
 
 def response_generator(model_copilot: Literal["Mock", "GPT3 agent", "GPT3", "Llama", "Llama agent"], selected_alert: Alert, question: str) -> Generator[Union[str, dict], None, None]:
     #st.toast(f'Generating with {model_copilot}')
-    answer_stream: Generator[ValidatedAnswerPart, None, None]
+    base_system_prompt = (
+        'You are an AI assistant whose goal is to help the use handle a support ticket.\n'
+        'Here is some info about this ticket:\n'
+        f'Title: {selected_alert.title}\n'
+        f'Description: {selected_alert.description}\n'
+        f'Severity: {selected_alert.severity}\n'
+        'Answer the user questions and help the user to resolve this ticket.\n'
+    )
+
+    ####################################
+    # Define agent/model
+    answer_stream: Generator[Union[ValidatedAnswerPart, ChatCompletionPart], None, None]
     if model_copilot == 'Mock':  # or True:
         answer_stream = iter([
             ValidatedAnswerPart(answer=None, citations=None, visualizations=None, intermediate_results=[IntermediateResult(step=1, status_code=200, function_name='PluginSAP_get_purchase_orders', function_arguments={}, result='[{"deliveryDate": "2021-01-01", "totalAmount": 10000, "items": [{"materialId": "IPS Natural Die Material ND1", "quantity": 1}, {"materialId": "Untersuchungshandschuhe Nitril light lemon Gr. M", "quantity": 10}, {"materialId": "Antiseptica r.f.u. H\\u00e4ndedesinfektion Flasche 1 Liter", "quantity": 1}]}]', message='At step 1, executing PluginSAP_get_purchase_orders', timestamp=1724422907, citation_id='d01b7fd7')]),
@@ -90,53 +101,90 @@ def response_generator(model_copilot: Literal["Mock", "GPT3 agent", "GPT3", "Lla
             ValidatedAnswerPart(answer=' Is there anything else I can assist you with?', citations=None, visualizations=None, intermediate_results=None),
         ])
     elif 'agent' in model_copilot:
-        # TODO: if GPT3... somewhere... probaly we can reuse a lot
+        # TODO: not only GPT3... probaly we can reuse a lot
         plugins = [
             (PluginCapivaraAlert(capivara_base_url='http://capivara:80', alert_id=selected_alert.id), "PluginServiceNow"),
             (PluginSalesforce(), "PluginSalesforce"),
             (PluginSAP(), "PluginSAP"),
         ]
-        llm = factory_create_connector_llm(
-            provider='azure_openai',
-            modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
-            version=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT").split('-')[-1],
-            credentials=CredentialsOpenAI(
-                base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                api_key=os.getenv("AZURE_OPENAI_KEY"),
-            ),
-        )
+        if model_copilot == 'GPT3 agent':
+            llm = factory_create_connector_llm(
+                provider='azure_openai',
+                modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
+                version=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT").split('-')[-1],
+                credentials=CredentialsOpenAI(
+                    base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    api_key=os.getenv("AZURE_OPENAI_KEY"),
+                ),
+            )
 
-        orchestrator = OrchestratorWithTool(
-            connection = llm,
-            tool_definitions = openai_function_to_tool.generate_definitions(semantic_kernel_v0_to_openai_function.generate_definitions(plugins)),
-            tool_callables = generate_callables(plugins),
-            token_limit_input = 1024,
-            token_limit_output = None,
-            max_steps_recommended = 4,
-            max_steps_allowed = 5,
-            prompt_app_system=(
-                'You are an AI assistant whose goal is to help the use handle a support ticket.\n'
-                'Here is some info about this ticket:\n'
-                f'Title: {selected_alert.title}\n'
-                f'Description: {selected_alert.description}\n'
-                f'Severity: {selected_alert.severity}\n'
-                'Answer the user questions and help the user to resolve this ticket.\n'
-            ),
-            prompt_app_user=question,
-        )
+            orchestrator = OrchestratorWithTool(
+                connection = llm,
+                tool_definitions = openai_function_to_tool.generate_definitions(semantic_kernel_v0_to_openai_function.generate_definitions(plugins)),
+                tool_callables = generate_callables(plugins),
+                token_limit_input = 1024,
+                token_limit_output = None,
+                max_steps_recommended = 4,
+                max_steps_allowed = 5,
+                prompt_app_system=base_system_prompt,
+                prompt_app_user=question,
+            )
+        elif model_copilot == 'Llama agent':
+            # TODO
+            raise NotImplementedError()
+        else:
+            raise RuntimeError(f'Invalid model: {model_copilot}')
+
         answer_stream = orchestrator.run_stream()
     else:
-        raise NotImplementedError()
+        # Non-agent chat
+        # TODO: not only GPT3... probaly we can reuse a lot
+        if model_copilot == 'GPT3':
+            llm = factory_create_connector_llm(
+                provider='azure_openai',
+                modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
+                version=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT").split('-')[-1],
+                credentials=CredentialsOpenAI(
+                    base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    api_key=os.getenv("AZURE_OPENAI_KEY"),
+                ),
+                hyperparameters = {'max_tokens': 1024, 'tool_choice': 'none'}
+            )
+        elif model_copilot == 'Llama':
+            llm = factory_create_connector_llm(
+                provider='llama_cpp',
+                modelname='not-needed',
+                version='not-needed',
+                credentials=CredentialsOpenAI(
+                    base_url='http://llm-server:8080/v1',
+                    api_key='not-needed',
+                ),
+                hyperparameters = {'max_tokens': 1024}
+            )
+        else:
+            raise RuntimeError(f'Invalid model: {model_copilot}')
+        answer_stream = llm.chat_completion_stream(messages=[
+            ChatCompletionMessage(role='system', content=base_system_prompt),
+            ChatCompletionMessage(role='user', content=question),
+        ])
 
+    ####################################
     # Stream answer
-    answer_parts = []
+    answer_parts: List[ValidatedAnswerPart] = []
     for part in answer_stream:
+        if type(part) == ChatCompletionPart:
+            if (len(part.choices) > 0) and (part.choices[0].message is not None) and (part.choices[0].message.content is not None):
+                part = ValidatedAnswerPart(answer=part.choices[0].message.content)  # type: ignore
+            else:
+                continue
+        assert type(part) == ValidatedAnswerPart
         answer_parts.append(part)
         part_converted_to_message = Message(user='assistant', message=part.answer or '', intermediate_results=[ir.dict() for ir in part.intermediate_results or []])
         for writtable in generate_streamlit_writtables(message=part_converted_to_message):
             yield writtable
             #time.sleep(0.05)
 
+    ####################################
     # Accumulate for saving in DB
     accumulated_answer = Message(user='assistant', message='', intermediate_results=[])
     for part in answer_parts:
