@@ -1,3 +1,4 @@
+from unidecode import unidecode
 from semantic_kernel.plugin_definition import kernel_function, kernel_function_context_parameter
 from semantic_kernel.kernel_pydantic import KernelBaseModel
 from semantic_kernel import KernelContext
@@ -206,7 +207,17 @@ country_to_capital = {
 }
 
 
+def _simplify_string(s: str) -> str:
+    s = unidecode(s)
+    s = s.replace('`', '').replace('"', '').replace("'", '')
+    s = s.strip()
+    s = s.lower()
+    return s
+
+
 class PluginCapital(KernelBaseModel):
+    country_to_capital: dict = {_simplify_string(k): v for (k, v) in country_to_capital.items()}
+
     @kernel_function(
         description="Returns the name of the capital of a country.",
         name="get_capital",
@@ -224,13 +235,13 @@ class PluginCapital(KernelBaseModel):
         if type(context.variables['country']) != str:
             raise ValueError('Parameter entity_name should be a string')
         country = context.variables['country']
-        country = country.replace('`', '').replace('"', '').replace("'", '')
-        country = country.strip()
-        country = country.lower()
+        country = _simplify_string(country)
 
         # Execute
-        if country in country_to_capital:
-            return country_to_capital[country]
+        if country in self.country_to_capital:
+            return self.country_to_capital[country]
+        elif (country[:-1] if country.endswith('s') else country) in self.country_to_capital:
+            return self.country_to_capital[country]
         else:
             raise RuntimeError('Country not found')
 

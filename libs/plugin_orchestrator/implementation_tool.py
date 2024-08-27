@@ -98,6 +98,8 @@ class OrchestratorWithTool(BaseModel):
 
     when streaming, `citations` is not included in the validated response
 
+    In the streaming default validator, if the key `text` is not provided in the answer function, it returns an empty response (instead of clearly failling, like the non-stream)
+
     # TODO and possible improvements
 
     citations and intermediate results are somewhat redundant... no?
@@ -518,7 +520,9 @@ class OrchestratorWithTool(BaseModel):
             yield chunk
 
 
-# Pseudo test
+# Pseudo test 1
+# 1 tool, openAI with tool
+# This requires calls to openAI ($$$)
 """
 llm = factory_create_connector_llm(
     provider='azure_openai',

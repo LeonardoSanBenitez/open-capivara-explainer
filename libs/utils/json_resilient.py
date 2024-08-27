@@ -81,6 +81,18 @@ def split_string_except_inside_brackets(input_string: str) -> List[str]:
     return parts
 
 
+def is_valid_json(input_: str) -> bool:
+    if len(input_) == 0:
+        return False
+    try:
+        _ = json.loads(input_, strict=False)
+        return True
+    except json.JSONDecodeError:
+        return False
+    except TypeError:
+        return False  # , {"Error": f"the JSON object must be str, bytes or bytearray not {type(input_)}"}
+
+
 def json_loads_resilient(input_: Union[str, List, Dict]) -> Tuple[bool, Union[List, Dict]]:
     '''
     @return worked: bool
@@ -88,23 +100,26 @@ def json_loads_resilient(input_: Union[str, List, Dict]) -> Tuple[bool, Union[Li
     '''
     if isinstance(input_, list) or isinstance(input_, dict):
         return True, input_
-    try:
+    elif is_valid_json(input_):
         parsed = json.loads(input_, strict=False)
-    except json.JSONDecodeError:
+    else:
         preprocessed_text = preprocess_json_input(input_)
 
-        # handle possible jsonl by returning just the first element
+        # Handle possible jsonl by returning just the first element
         # TODO: maybe should be optional if it should return a list or the first
-        splits = split_string_except_inside_brackets(preprocessed_text)
+        splits: List[str] = split_string_except_inside_brackets(preprocessed_text)
+        assert len(splits) > 0
         if len(splits) > 1:
-            logger.warning(f"json_loads_resilient: received jsonl with multiple elemnts, returning only the first element...")
-        preprocessed_text = splits[0]
+            logger.warning(f"json_loads_resilient: received jsonl with multiple elemnts, returning only the first valid element...")
+            splits = list(filter(lambda split: is_valid_json(split), splits))
+            if len(splits) == 0:
+                return False, {"Error": "No valid json found within splits"}
+        split: str = splits[0]
         try:
-            logger.debug('Trying to parse:', preprocessed_text)
-            parsed = json.loads(preprocessed_text, strict=False)
+            logger.debug('Trying to parse:', split)
+            parsed = json.loads(split, strict=False)
             assert isinstance(parsed, dict) or isinstance(parsed, list)
         except Exception:
             return False, {"Error": f"Could not parse invalid json: {input_}"}
-    except TypeError:
-        return False, {"Error": f"the JSON object must be str, bytes or bytearray not {type(input_)}"}
+
     return True, parsed

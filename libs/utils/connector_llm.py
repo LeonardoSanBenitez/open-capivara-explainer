@@ -147,12 +147,12 @@ class ChatCompletionMessageResponse(BaseModel):
         Warning: this is an approximate convertion, it may not suite all cases
         '''
         message: ChatCompletionMessage
-        if (self.content is None) and (self.tool_calls is None):
+        if (self.content is None or self.content=='') and (self.tool_calls is None or len(self.tool_calls)==0):
             logger.warning('Neither content nor tool_calls are provided. Response will be empty.')
             message = ChatCompletionMessage(role=self.role, content='')
-        elif (self.content is not None) and (self.tool_calls is None):
+        elif (self.content is not None and self.content!='') and (self.tool_calls is None or len(self.tool_calls)==0):
             message = ChatCompletionMessage(role=self.role, content=self.content)
-        elif (self.content is None) and (self.tool_calls is not None):
+        elif (self.content is None or self.content=='') and (self.tool_calls is not None and len(self.tool_calls)>0):
             message = ChatCompletionMessage(role=self.role, content=json.dumps([t.dict() for t in self.tool_calls]))
         else:
             assert type(self.content) == str

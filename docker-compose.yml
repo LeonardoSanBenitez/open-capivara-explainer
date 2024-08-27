@@ -15,7 +15,6 @@ services:
     ports:
        - 8888:8888
 
-
   llm-server:
     # Docs: https://github.com/ggerganov/llama.cpp/tree/master/examples/server
     # When downloading a new model, it takes a while and it doesn't show any progress in the terminal
@@ -46,7 +45,7 @@ services:
     build: 
       context: .
       dockerfile: ./services/orchestrator_proxy/Dockerfile
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--reload"]
+    command: ["flask", "--app=app/main.py", "run", "--host=0.0.0.0", "--port=80", "--reload"]
     volumes:
       - ./services/orchestrator_proxy/app:/src/app
       - ./libs:/src/libs
@@ -72,7 +71,6 @@ services:
       - PYTHONPATH=/src
     ports:
       - 8001:80
-
 
   frontend:
     container_name: explainer-frontend

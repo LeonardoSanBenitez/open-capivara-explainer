@@ -47,11 +47,10 @@ def load_eval_dataset(
     @param filter_difficulty: list of difficulties to filter (only exact matches will be included); if None, don't filter
     @param super_important_multiplier: how many times each super important question should be repeated
     '''
-    # TODO:
-    # add filters (like "only area=chitchat" or "difficulty=easy")
-    # super_important multiplier (repeat the rows that are super important)
+
     df = pd.read_csv(dataset_path)
     logger.info(f"Before filtering, evaluation set contains {df.shape[0]} rows")
+    # Filters
     if remove_out_of_scope:
         df = df[~df['out_of_scope_for_now']]
     if filter_areas is not None:
@@ -70,6 +69,11 @@ def load_eval_dataset(
         assert row_limit > 0
         df = df.head(row_limit)
 
+    # Quality assurance
+    invalid_mask = df[['area', 'difficulty']].isna().any(axis=1)
+    if invalid_mask.sum() > 0:
+        logger.warning(f"The columns `area` and `difficulty` are mandatory. {invalid_mask.sum()} rows will be removed.")
+        df = df[~invalid_mask]
     assert df.shape[0] > 0
     assert df.shape[1] >= 7
     return df
@@ -146,13 +150,13 @@ def add_evaluation_scores(
         # score = random.choice(['1', '2', '3', '4', '5'])
         results.loc[index, metric] = score  # type: ignore
 
-    # Cleaning
-    logger.info(f"For metric {metric}, {(results[metric].str.len() != 1).sum()} tests failed")
-    results = results[results[metric].str.len() == 1]
+    # Quality assurance
+    invalid_mask = results[metric].str.len() != 1
+    if invalid_mask.sum() != 0:
+        logger.warning(f"The evaluation returned invalid scores. {invalid_mask.sum()} rows will be removed, for example this one: {results[invalid_mask].iloc[0][metric]}")
+        results = results[~invalid_mask]
     results[metric] = pd.to_numeric(results[metric], errors='coerce')
-    results.dropna(subset=['area', 'difficulty', metric], inplace=True)
 
-    assert eval_dataset_with_inference.shape[0] == results.shape[0]
     assert eval_dataset_with_inference.shape[1] == results.shape[1] - 1, f'{eval_dataset_with_inference.shape[1]} vs {results.shape[1]}'
     assert metric in results.columns
     return results

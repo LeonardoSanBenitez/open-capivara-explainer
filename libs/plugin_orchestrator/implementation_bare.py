@@ -25,7 +25,7 @@ class OrchestratorBare(OrchestratorWithTool):
         self._prompt_orchestrator_triggering = (
             f"Now call a function with the JSON syntax explained.\n"
             f"Do not do anything else, just call a function.\n"
-            f"If you have enough information to answer the question, call the '{self.answer_function_name}' function and pass the answer as a parameter.\n"
+            f"If you have enough information to answer the question, call the '{self.answer_function_name}' function and pass the answer as the argument 'text'.\n"
             f"This is very important: the argument for the '{self.answer_function_name}' function is the only thing the user will see, all your results should be shown here.\n"
             f"Call only one function per message.\n"
             f"Do not call the same function with the same arguments more than once, their outputs are deterministic."
@@ -51,7 +51,8 @@ class OrchestratorBare(OrchestratorWithTool):
                 f'''The JSON necessary to call a function contains one key named "thought" (its value have type string, with one short sentence descring why you should take this action), one key named "action_name" (its value have type string, with the name of the function to call), and one key named "args" (its value have type object, with the arguments to pass to the function).\n'''  # noqa: E501
                 f'''The JSON keys "thought", "action_name" and "args" should be written in this order.\n'''
                 f'''The JSON keys "thought", "action_name" and "args" should always be present.\n'''
-                '''Example (just to demonstrate the syntax, this example function does not exist, do not call it): {"thought": "The first step to answer the user question is to use my example function", "action_name": "my_example_function", "args": {"my_param": "something"}}\n'''  # noqa: E501
+                # if self.prompt_include_example = True
+                # '''Example (just to demonstrate the syntax, this example function does not exist, do not call it): {"thought": "The first step to answer the user question is to use my example function", "action_name": "my_example_function", "args": {"my_param": "something"}}\n'''  # noqa: E501
                 f"Remember to call the function only once per message.\n"
                 f"Do not answer with anything that is not a json, do not add any extra comment, follow exactly the syntax provided.\n"
                 f"Always use the tools, do not answer without the tools.\n"
@@ -161,8 +162,10 @@ class OrchestratorBare(OrchestratorWithTool):
                     yield chunk.choices[0].message
 
 
-# GPT3
-"""
+# Pseudo test 1
+# 3 tools, openAI bare
+# This requires calls to openAI ($$$)
+'''
 llm = factory_create_connector_llm(
     provider='azure_openai',
     modelname=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_CHAT"),
@@ -171,26 +174,40 @@ llm = factory_create_connector_llm(
         base_url=os.getenv("AZURE_OPENAI_ENDPOINT"),
         api_key=os.getenv("AZURE_OPENAI_KEY"),
     ),
-    hyperparameters={'tool_choice': 'none'}
+    hyperparameters={'max_tokens': 2048, 'tool_choice': 'none'}
 )
 
+selected_alert = {'id': 'dc2a',
+ 'title': 'Defective product',
+ 'description': 'I ordered a Handstückschlauch, but it came already broken',
+ 'severity': 'Medium'}
+
+plugins = [
+    (PluginCapivaraAlert(capivara_base_url='http://capivara:80', alert_id=selected_alert['id']), "PluginServiceNow"),
+    (PluginSalesforce(), "PluginSalesforce"),
+    (PluginSAP(), "PluginSAP"),
+]
 orchestrator = OrchestratorBare(
     connection = llm,
-    tool_definitions = openai_function_to_tool.generate_definitions(semantic_kernel_v0_to_openai_function.generate_definitions([(PluginCapital(), "PluginCapital")])),
-    tool_callables = generate_callables([(PluginCapital(), "PluginCapital")]),
-    token_limit_input = 1024,
+    tool_definitions = openai_function_to_tool.generate_definitions(semantic_kernel_v0_to_openai_function.generate_definitions(plugins)),
+    tool_callables = generate_callables(plugins),
+    token_limit_input = 2048,
     token_limit_output = None,
-    max_steps_recommended = 2,
-    max_steps_allowed = 3,
-    prompt_app_system='You are an AI assistant whose goal is to answer the user question.',
-    prompt_app_user='What is the capital of france?',
+    max_steps_recommended = 4,
+    max_steps_allowed = 5,
+    prompt_app_system=(
+        'You are an AI assistant whose goal is to help the use handle a support ticket.\n'
+        'Here is some info about this ticket:\n'
+        f'Title: {selected_alert["title"]}\n'
+        f'Description: {selected_alert["description"]}\n'
+        f'Severity: {selected_alert["severity"]}\n'
+        'Answer the user questions and help the user to resolve this ticket.\n'
+    ),
+    prompt_app_user='If the customer had purchased any glove in the past, please place an order for 100 of that exact glove model and close the current ticket',  # SAP, capivara
 )
 
 r = await orchestrator.run_async()
-#r = orchestrator.run()
-print(r)
-print('\n\n' + '-'*30 + '\n\n')
 assert type(r.answer) == str
 assert len(r.answer) > 4
 print(r.answer)
-"""
+'''

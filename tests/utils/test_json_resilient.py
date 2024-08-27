@@ -18,7 +18,7 @@ def test_split_string_except_inside_brackets():
         '{"info": "some\\ninfo"}'  
     ]
 
-def test_json_loads_resilient():
+def test_json_loads_resilient_works():
     worked, parsed = json_loads_resilient('{"a": 1, "b": 2}')
     assert worked
     
@@ -42,3 +42,12 @@ def test_json_loads_resilient():
     
     worked, parsed = json_loads_resilient('{"a": "\n1"}\n[1, 2, 3]\\n{"a": "\n1"}')
     assert worked, len(parsed) == 3
+
+    worked, content_json = json_loads_resilient('''lalala capital of francé:\n```\n{\n  "k1": "la",\n  "k2": "lo"\n}\n```''')
+    assert worked
+    assert content_json == {'k1': 'la', 'k2': 'lo'}
+
+
+def test_json_loads_resilient_fails():
+    worked, parsed = json_loads_resilient('haha')
+    assert not worked
