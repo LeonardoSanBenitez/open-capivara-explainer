@@ -5,16 +5,7 @@ import requests
 from typing import List, Literal, Union, Generator
 
 from libs.CTRS.models import Alert, Message
-from libs.utils.connector_llm import factory_create_connector_llm, CredentialsOpenAI, ChatCompletionPart, ChatCompletionMessage
-from libs.plugin_orchestrator.answer_validation import ValidatedAnswerPart, IntermediateResult
-from libs.plugin_orchestrator.implementation_tool import OrchestratorWithTool
-from libs.plugin_orchestrator.implementation_bare import OrchestratorBare
-from libs.plugins.plugin_salesforce import PluginSalesforce
-from libs.plugins.plugin_sap import PluginSAP
-from libs.plugins.plugin_capivara import PluginCapivaraAlert
-from libs.plugin_converter.semantic_kernel_v0_to_openai_function import generate_callables
-import libs.plugin_converter.semantic_kernel_v0_to_openai_function as semantic_kernel_v0_to_openai_function
-import libs.plugin_converter.openai_function_to_tool as openai_function_to_tool
+from libs.plugin_orchestrator.answer_validation import ValidatedAnswerPart
 import json
 
 # Sample data

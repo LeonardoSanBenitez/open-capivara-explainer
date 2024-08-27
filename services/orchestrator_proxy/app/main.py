@@ -1,12 +1,12 @@
 
 
-from typing import Optional, Tuple, List, Union, Any, AsyncGenerator, Literal, Union, Generator
+from typing import Union, Literal, Union, Generator
 import os
 import logging
 import time
-from flask import Flask, Response, stream_with_context, request
+from flask import Flask, Response, request
 
-from libs.CTRS.models import Alert, Message
+from libs.CTRS.models import Alert
 from libs.utils.connector_llm import factory_create_connector_llm, CredentialsOpenAI, ChatCompletionPart, ChatCompletionMessage
 from libs.plugin_orchestrator.answer_validation import ValidatedAnswerPart, IntermediateResult
 from libs.plugin_orchestrator.implementation_tool import OrchestratorWithTool
@@ -47,12 +47,8 @@ def stream_response_chat_completion(model_copilot: Literal["Mock", "GPT3 agent",
             ValidatedAnswerPart(answer=' Is there anything else I can assist you with?', citations=None, visualizations=None, intermediate_results=None),
         ])
     elif 'agent' in model_copilot:
-        # TODO: not only GPT3... probaly we can reuse a lot
-        plugins = [
-            (PluginCapivaraAlert(capivara_base_url='http://capivara:80', alert_id=selected_alert.id), "PluginServiceNow"),
-            (PluginSalesforce(), "PluginSalesforce"),
-            (PluginSAP(), "PluginSAP"),
-        ]
+        # What can we reuse between these two agents?
+
         if model_copilot == 'GPT3 agent':
             llm = factory_create_connector_llm(
                 provider='azure_openai',
@@ -63,7 +59,11 @@ def stream_response_chat_completion(model_copilot: Literal["Mock", "GPT3 agent",
                     api_key=os.getenv("AZURE_OPENAI_KEY"),
                 ),
             )
-
+            plugins = [
+                (PluginCapivaraAlert(capivara_base_url='http://capivara:80', alert_id=selected_alert.id), "PluginServiceNow"),
+                (PluginSalesforce(), "PluginSalesforce"),
+                (PluginSAP(), "PluginSAP"),
+            ]
             orchestrator = OrchestratorWithTool(
                 connection = llm,
                 tool_definitions = openai_function_to_tool.generate_definitions(semantic_kernel_v0_to_openai_function.generate_definitions(plugins)),

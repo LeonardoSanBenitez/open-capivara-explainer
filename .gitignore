@@ -2,6 +2,7 @@ data/
 assets/
 models/
 !/**/.gitkeep
+notebooks/6.2 - Orchestration DB.ipynb
 
 # Prompt flow
 .promptflow
