@@ -1,7 +1,7 @@
 from typing import Literal, List, Tuple, Optional, Any, Union, AsyncGenerator, Generator
 from pydantic import BaseModel, ConfigDict, computed_field
 from functools import cached_property
-from abc import ABC, abstractmethod
+from abc import ABC
 import json
 import openai
 from libs.utils.prompt_manipulation import DefinitionOpenaiTool
@@ -36,6 +36,9 @@ Incomplete hyperparameter support
 Tool calling only supported at OpenAI (even though bedrock supports it too)
 
 network failures or other random failures
+
+We do not check if the current model is able to calculate embeddings (and similarly, we assume all models can do text completion and chat completion).
+This should be checked in the factory and described in the capabilities.
 '''
 
 
@@ -52,13 +55,13 @@ class Hyperparameters(BaseModel, ABC):
 
 
 class HyperparametersOpenAI(Hyperparameters):
-    max_tokens: int = 150
+    max_tokens: int = 1024
     temperature: float = 0.7
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
     stop: Optional[List[str]] = None
-    tool_choice: Union[str, dict] = 'required'  # 'required', 'none', or a dict like {"type": "function", "function": {"name": "my_function"}}
+    tool_choice: Union[str, dict] = 'required'  # 'required', 'auto', 'none', or a dict like {"type": "function", "function": {"name": "my_function"}}
 
 
 class HyperparametersLlamaCPP(Hyperparameters):
@@ -208,40 +211,44 @@ class ConnectorLLM(BaseModel, ABC):
     hyperparameters: Hyperparameters
     credentials: Credentials
 
-    @abstractmethod
     def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     def chat_completion_stream(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[ChatCompletionPart, None, None]:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletionPart, None]:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     def text_completion(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletionPart, None, None]:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
-        pass
+        raise NotImplementedError('Abstract method')
 
-    @abstractmethod
     async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletionPart, None]:
-        pass
+        raise NotImplementedError('Abstract method')
+
+    def embedding_one(self, text: str) -> List[float]:
+        raise NotImplementedError('Abstract method')
+
+    async def embedding_one_async(self, text: str) -> List[float]:
+        raise NotImplementedError('Abstract method')
+
+    def embedding_batch(self, texts: List[str]) -> List[List[float]]:
+        raise NotImplementedError('Abstract method')
+
+    async def embedding_batch_async(self, texts: List[str]) -> List[List[float]]:
+        raise NotImplementedError('Abstract method')
 
 
-class ConnectorLLMBedrock(BaseModel, ABC):
+class ConnectorLLMBedrock(ConnectorLLM):
     capabilities: Capabilities
     hyperparameters: HyperparametersBedrock
     credentials: Credentials
@@ -308,6 +315,21 @@ class ConnectorLLMBedrock(BaseModel, ABC):
                     finish_reason = event.get('messageStop', {}).get('stopReason', None)
                 )]
             )
+
+    def embedding_one(self, text: str) -> List[float]:
+        response = self.client.invoke_model(
+            accept='application/json',
+            contentType='application/json',
+            body=json.dumps({'texts': [text], 'input_type': 'search_document'}),
+            modelId=self.modelname,
+        )
+        assert response is not None
+        output = json.loads(response.get("body").read())
+        assert type(output) == dict
+        assert 'embeddings' in output
+        assert type(output['embeddings']) == list
+        assert len(output['embeddings']) == 1
+        return output['embeddings'][0]
 
 
 class ConnectorLLMOpenAI(ConnectorLLM):
@@ -388,18 +410,6 @@ class ConnectorLLMOpenAI(ConnectorLLM):
                 choices: List[ChatCompletionChoicePart] = [ChatCompletionChoicePart(message = ChatCompletionMessageResponsePart(**m)) for m in messages_d]
                 yield ChatCompletionPart(choices=choices)
 
-    def text_completion(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
-        raise NotImplementedError()
-
-    def text_completion_stream(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> Generator[TextCompletionPart, None, None]:
-        raise NotImplementedError()
-
-    async def text_completion_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> TextCompletion:
-        raise NotImplementedError()
-
-    async def text_completion_stream_async(self, prompt: str, tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[TextCompletionPart, None]:
-        raise NotImplementedError()
-
 
 class ConnectorLLMAzureOpenAI(ConnectorLLMOpenAI):
     @computed_field  # type: ignore
@@ -436,31 +446,36 @@ def factory_create_connector_llm(
     Chooses the right connector
 
     set capabilities based on version and model
+
+    Check compabitility of hyperparameters and crednetials
+    If you set them incorrectly, then this func will try to correct it (logging a warning), then raises error if not possible
     '''
-    if provider == 'openai':
+    if 'openai' in provider:
         capabilities = Capabilities()
-        if version == '1106' or version == '0125':
+        if ('35-turbo' in modelname and (version == '1106' or version == '0125')) or ('gpt-4' in modelname):
             capabilities.response_json_only = True
             capabilities.tool_call = True
-
-        return ConnectorLLMOpenAI(
-            modelname=modelname,
-            capabilities=capabilities,
-            hyperparameters=HyperparametersOpenAI(**hyperparameters),
-            credentials=credentials,  # type: ignore
-        )
-    elif provider == 'azure_openai':
-        capabilities = Capabilities()
-        if version == '1106' or version == '0125':
-            capabilities.response_json_only = True
-            capabilities.tool_call = True
-
-        return ConnectorLLMAzureOpenAI(
-            modelname=modelname,
-            capabilities=capabilities,
-            hyperparameters=HyperparametersOpenAI(**hyperparameters),
-            credentials=credentials,  # type: ignore
-        )
+        assert isinstance(credentials, CredentialsOpenAI)
+        hyperparameters_obj = HyperparametersOpenAI(**hyperparameters)
+        if ('gpt-4o' in modelname) and (hyperparameters_obj.tool_choice == 'required'):
+            logger.warning('Hyparameter tool_choice=required is not supported for GPT4-omni models, overwriting to auto')
+            hyperparameters_obj.tool_choice='auto'
+        if provider == 'openai':
+            return ConnectorLLMOpenAI(
+                modelname=modelname,
+                capabilities=capabilities,
+                hyperparameters=hyperparameters_obj,
+                credentials=credentials,
+            )
+        elif provider == 'azure_openai':
+            return ConnectorLLMAzureOpenAI(
+                modelname=modelname,
+                capabilities=capabilities,
+                hyperparameters=hyperparameters_obj,
+                credentials=credentials,
+            )
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
     elif provider == 'llama_cpp':
         capabilities = Capabilities(local=True)
         return ConnectorLLMLlamaCPP(

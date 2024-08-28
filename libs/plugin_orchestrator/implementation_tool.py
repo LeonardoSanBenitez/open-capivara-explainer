@@ -272,7 +272,7 @@ class OrchestratorWithTool(BaseModel):
         assert len(chat_completion.choices) > 0
         assert chat_completion.choices[0].message.tool_calls is not None
         assert len(chat_completion.choices[0].message.tool_calls) > 0
-        # print('>>>>>>>>> RAW RESPONSE:', chat_completion.choices[0].message)
+        print('>>>>>>>>> RAW RESPONSE:', chat_completion.choices[0].message)
         return chat_completion.choices[0].message
 
     async def _chat_step_stream(self, current_step_messages: List[ChatCompletionMessage]) -> AsyncGenerator[ChatCompletionMessageResponsePart, None]:

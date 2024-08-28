@@ -1,7 +1,8 @@
-from typing import Tuple, Optional, Any
+from typing import List, Tuple, Optional, Any
 import pandas as pd
 import os
 import json
+import re
 from pydantic import BaseModel, computed_field
 from functools import cached_property
 
@@ -10,10 +11,31 @@ from semantic_kernel.kernel_pydantic import KernelBaseModel
 from semantic_kernel import KernelContext
 from libs.utils.logger import get_logger
 from libs.utils import check_libary_major_version
+from libs.utils.connector_llm import ConnectorLLM
 
 
 check_libary_major_version('semantic_kernel', '0.5.0')
 logger = get_logger('libs.plugin_database')
+
+
+def _detect_embedding_call(text: str) -> Optional[str]:
+    pattern = r"embedded_question\s*\(\s*'([^']+)'\s*\)"
+    matches = re.findall(pattern, text, re.DOTALL)
+    if len(matches) > 1:
+        raise RuntimeError("Multiple embedded_question calls found.")
+    return matches[0] if matches else None
+
+
+def _replace_embedding_call(text: str, embedding: List[float]) -> str:
+    pattern = r"embedded_question\s*\(\s*'([^']*)'\s*\)"
+    matches = re.findall(pattern, text, re.DOTALL)
+    if len(matches) > 1:
+        raise RuntimeError("Multiple embedded_question calls found.")
+    if matches:
+        embedding_str = f"'{str(embedding)}'"
+        return re.sub(pattern, embedding_str, text, count=1, flags=re.DOTALL)
+    else:
+        raise RuntimeError('No matches found')
 
 
 class CredentialsAWS(BaseModel):
@@ -26,9 +48,10 @@ class CredentialsAWS(BaseModel):
 
 
 class PluginDatabaseRDS(BaseModel):
-    max_output_rows: int = 20
-    max_output_columns: int = 100
+    max_output_rows: int = 100
+    max_output_columns: int = 30
     credentials: CredentialsAWS
+    llm_embedding: ConnectorLLM
 
     @computed_field  # type: ignore
     @cached_property
@@ -50,6 +73,15 @@ class PluginDatabaseRDS(BaseModel):
         @return message: str, error or other relevant message
         @return df: pd.DataFrame, data returned by the query
         '''
+        # Preprocess query
+        topic = _detect_embedding_call(query)
+        if topic:
+            embedding: List[float] = self.llm_embedding.embedding_one(topic)
+            # print('>>>>>>>>>>>> ORIGINAL QUERY', query)
+            query = _replace_embedding_call(query, embedding)
+            # print('>>>>>>>>>>>> REPLACED QUERY', query)
+
+        # Execute
         response = self.client.invoke(
             FunctionName='researchbot-query-rds-chatbot-272221232549',
             Payload=json.dumps({'sql_query': query}),
@@ -102,9 +134,17 @@ class PluginDatabaseRDS(BaseModel):
     )
     @kernel_function_context_parameter(
         name="query",
-        description="Exact SQL query to be executed. Use valid SQL RDS syntax. Do not call nor create stored procedures or UDFs."
+        description="Exact SQL query to be executed. Use valid SQL RDS syntax."
+                    " Run only select queries, don't create or update anything."
                     " Be sure to limit your query to at most 100 rows."
-                    " Never select all columns, always filter just what you need.",
+                    " Never select all columns, always filter just what you need."
+                    #
+                    " There is only one stored procedure you are allow to call, embedded_question(text: str),"
+                    " you can use it when searching for items that are similar to an arbitrary string, and it should be used only for ORDER BY statements"
+                    " using a distante comparisons (operator <->) with the embedding column;"
+                    " Also, you should use this function at most once in a query;"
+                    " example usage: ORDER BY embedding <-> embedded_question('renewable energies')",
+
         type = "string",
         required = True,
     )
@@ -118,7 +158,7 @@ class PluginDatabaseRDS(BaseModel):
 
         # Fetch data
         # logger.debug('>>>>>> LLM REQUESTED THE FOLLOWING QUERY:', query)
-        status_code, message, df = self._exec_query_safe(query)
+        _, message, df = self._exec_query_safe(query)
 
         # Result formatting
         result = ''
