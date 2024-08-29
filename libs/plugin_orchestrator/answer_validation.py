@@ -36,8 +36,8 @@ class IntermediateResult(BaseModel):
 
 class ValidatedAnswer(BaseModel):
     answer: str
-    citations: list[Citation] = []
-    visualizations: list[Visualization] = []
+    citations: List[Citation] = []
+    visualizations: List[Visualization] = []
     intermediate_results: List[IntermediateResult] = []
 
     def to_message(self) -> ChatCompletionMessage:
@@ -49,8 +49,8 @@ class ValidatedAnswer(BaseModel):
 
 class ValidatedAnswerPart(BaseModel):
     answer: Optional[str] = None
-    citations: Optional[list[Citation]] = None
-    visualizations: Optional[list[Visualization]] = None
+    citations: Optional[List[Citation]] = None
+    visualizations: Optional[List[Visualization]] = None
     intermediate_results: Optional[List[IntermediateResult]] = None
 
 

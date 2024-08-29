@@ -276,6 +276,8 @@ class ConnectorLLMBedrock(ConnectorLLM):
                 normal_messages.append(message.to_bedrock_normal())
             else:
                 raise ValueError(f'Unkown message role: {message.role}')
+        # print('>>>>>>>>>>>>>>>>>>> normal_messages', normal_messages)
+        # print('>>>>>>>>>>>>>>>>>>> system_messages', system_messages)
         return normal_messages, system_messages
 
     def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
@@ -459,6 +461,10 @@ def factory_create_connector_llm(
 
     Check compabitility of hyperparameters and crednetials
     If you set them incorrectly, then this func will try to correct it (logging a warning), then raises error if not possible
+
+    # Provider models and versions documentation
+    https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#gpt-4
+    https://aws.amazon.com/bedrock/claude/
     '''
     if 'openai' in provider:
         capabilities = Capabilities()
@@ -510,7 +516,7 @@ def factory_create_connector_llm(
         # Actually, tool_call IS supported
         # We just had to adapt the syntax
         capabilities = Capabilities()
-        if ('claude-3-5-sonnet' in modelname) and ('maxTokens' not in hyperparameters):
+        if 'claude-3-5-sonnet' in modelname:
             capabilities.token_limit_input = 200000 - 4096
             capabilities.token_limit_output = 4096
         if 'maxTokens' not in hyperparameters:
