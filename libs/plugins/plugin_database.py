@@ -51,6 +51,7 @@ class PluginDatabaseRDS(BaseModel):
     max_output_rows: int = 100
     max_output_columns: int = 30
     credentials: CredentialsAWS
+    query_proxy_url: str
     llm_embedding: ConnectorLLM
 
     @computed_field  # type: ignore
@@ -83,7 +84,7 @@ class PluginDatabaseRDS(BaseModel):
 
         # Execute
         response = self.client.invoke(
-            FunctionName='researchbot-query-rds-chatbot-272221232549',
+            FunctionName=self.query_proxy_url,
             Payload=json.dumps({'sql_query': query}),
         )
         assert 'StatusCode' in response

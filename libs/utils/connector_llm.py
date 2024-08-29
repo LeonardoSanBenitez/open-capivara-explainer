@@ -46,6 +46,8 @@ class Capabilities(BaseModel):
     response_json_only: bool = False
     tool_call: bool = False
     local: bool = False
+    token_limit_input: int = 2048
+    token_limit_output: Optional[int] = None
 
 ###
 
@@ -55,7 +57,7 @@ class Hyperparameters(BaseModel, ABC):
 
 
 class HyperparametersOpenAI(Hyperparameters):
-    max_tokens: int = 1024
+    max_tokens: Optional[int] = None
     temperature: float = 0.7
     top_p: float = 1.0
     frequency_penalty: float = 0.0
@@ -65,7 +67,7 @@ class HyperparametersOpenAI(Hyperparameters):
 
 
 class HyperparametersLlamaCPP(Hyperparameters):
-    max_tokens: int = 2048
+    max_tokens: Optional[int] = None
     temperature: float = 0.7
     top_p: float = 1.0
     frequency_penalty: float = 0.0
@@ -74,7 +76,8 @@ class HyperparametersLlamaCPP(Hyperparameters):
 
 
 class HyperparametersBedrock(Hyperparameters):
-    maxTokens: int = 1024
+    maxTokens: Optional[int] = None
+
 ###
 
 
@@ -277,8 +280,6 @@ class ConnectorLLMBedrock(ConnectorLLM):
 
     def chat_completion(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
         normal_messages, system_messages = self._separate_messages(messages)
-        # print('>>>>>>>>>>>>>', normal_messages)
-        # print('>>>>>>>>>>>>>', system_messages)
         chat_completion = self.client.converse(
             modelId=self.modelname,
             messages=normal_messages,
@@ -315,6 +316,15 @@ class ConnectorLLMBedrock(ConnectorLLM):
                     finish_reason = event.get('messageStop', {}).get('stopReason', None)
                 )]
             )
+
+    async def chat_completion_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> ChatCompletion:
+        r = self.chat_completion(messages, tool_definitions)
+        return r
+
+    async def chat_completion_stream_async(self, messages: List[ChatCompletionMessage], tool_definitions: List[DefinitionOpenaiTool] = []) -> AsyncGenerator[ChatCompletionPart, None]:  # type: ignore
+        rs = self.chat_completion_stream(messages, tool_definitions)
+        for r in rs:
+            yield r
 
     def embedding_one(self, text: str) -> List[float]:
         response = self.client.invoke_model(
@@ -455,11 +465,23 @@ def factory_create_connector_llm(
         if ('35-turbo' in modelname and (version == '1106' or version == '0125')) or ('gpt-4' in modelname):
             capabilities.response_json_only = True
             capabilities.tool_call = True
+        if ('gpt-35-turbo' in modelname) and (version=='1106'):
+            capabilities.token_limit_input = 16385
+            capabilities.token_limit_output = 4096
+        elif ('gpt-4-turbo' in modelname) and (version=='2024-04-09'):
+            capabilities.token_limit_input = 128000
+            capabilities.token_limit_output = 4096
+        else:
+            logger.warning('Using default values for token_limit_input and token_limit_output')
+
         assert isinstance(credentials, CredentialsOpenAI)
+
         hyperparameters_obj = HyperparametersOpenAI(**hyperparameters)
         if ('gpt-4o' in modelname) and (hyperparameters_obj.tool_choice == 'required'):
             logger.warning('Hyparameter tool_choice=required is not supported for GPT4-omni models, overwriting to auto')
             hyperparameters_obj.tool_choice='auto'
+        # TODO: check if token limit exceed capabilities
+
         if provider == 'openai':
             return ConnectorLLMOpenAI(
                 modelname=modelname,
@@ -488,6 +510,11 @@ def factory_create_connector_llm(
         # Actually, tool_call IS supported
         # We just had to adapt the syntax
         capabilities = Capabilities()
+        if ('claude-3-5-sonnet' in modelname) and ('maxTokens' not in hyperparameters):
+            capabilities.token_limit_input = 200000 - 4096
+            capabilities.token_limit_output = 4096
+        if 'maxTokens' not in hyperparameters:
+            hyperparameters['maxTokens'] = capabilities.token_limit_output
         return ConnectorLLMBedrock(
             modelname=modelname,
             capabilities=capabilities,
