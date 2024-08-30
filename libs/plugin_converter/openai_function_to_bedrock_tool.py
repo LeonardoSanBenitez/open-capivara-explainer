@@ -1,5 +1,5 @@
 from typing import List
-from libs.utils.connector_llm import DefinitionOpenaiFunction, DefinitionBedrockTool, DefinitionBedrockToolSpec, DefinitionBedrockToolInputSchema, ParametersOpenaiFunction
+from libs.utils.connector_llm import DefinitionOpenaiFunction, DefinitionBedrockTool, DefinitionBedrockToolSpec, DefinitionBedrockToolInputSchema
 
 
 def generate_definitions(functions: List[DefinitionOpenaiFunction]) -> List[DefinitionBedrockTool]:
