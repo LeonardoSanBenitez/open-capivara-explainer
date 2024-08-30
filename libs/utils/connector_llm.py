@@ -139,23 +139,12 @@ class CredentialsBedrock(Credentials):
 
 #############################################
 # Models - Tools
-class ParametersOpenaiFunction(BaseModel):
+class ParametersJsonSchema(BaseModel):
+    # https://json-schema.org/understanding-json-schema/reference
     type: str
     properties: dict
     required: List[str]
     additionalProperties: bool = False
-
-
-class DefinitionOpenaiFunction(BaseModel):
-    name: str
-    description: str
-    parameters: ParametersOpenaiFunction
-    strict: bool = True
-
-
-class DefinitionOpenaiTool(BaseModel):
-    type: Literal['function']
-    function: DefinitionOpenaiFunction
 
 
 class BaseModelAliased(BaseModel):
@@ -171,7 +160,7 @@ class BaseModelAliased(BaseModel):
 class DefinitionBedrockToolInputSchema(BaseModelAliased):
     # Bedrock expects the name "json", but that name is reserved in pydantic
     # So we do this worksaround of overwritting the exporters dict() and json() to always use the alias
-    json_data: ParametersOpenaiFunction = Field(..., alias="json")
+    json_data: ParametersJsonSchema = Field(..., alias="json")
 
 
 class DefinitionBedrockToolSpec(BaseModelAliased):
@@ -182,6 +171,36 @@ class DefinitionBedrockToolSpec(BaseModelAliased):
 
 class DefinitionBedrockTool(BaseModelAliased):
     toolSpec: DefinitionBedrockToolSpec
+
+
+class DefinitionOpenaiFunction(BaseModel):
+    name: str
+    description: str
+    parameters: ParametersJsonSchema
+    strict: bool = True
+
+    def to_bedrock_tool(self) -> DefinitionBedrockTool:
+        return DefinitionBedrockTool(
+            toolSpec=DefinitionBedrockToolSpec(
+                name=self.name,
+                description=self.description,
+                inputSchema=DefinitionBedrockToolInputSchema(json=self.parameters),
+            )
+        )
+
+
+class DefinitionOpenaiTool(BaseModel):
+    type: Literal['function']
+    function: DefinitionOpenaiFunction
+
+    def to_bedrock_tool(self) -> DefinitionBedrockTool:
+        return DefinitionBedrockTool(
+            toolSpec=DefinitionBedrockToolSpec(
+                name=self.function.name,
+                description=self.function.description,
+                inputSchema=DefinitionBedrockToolInputSchema(json=self.function.parameters),
+            )
+        )
 
 
 #############################################

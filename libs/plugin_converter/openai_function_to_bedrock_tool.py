@@ -3,15 +3,4 @@ from libs.utils.connector_llm import DefinitionOpenaiFunction, DefinitionBedrock
 
 
 def generate_definitions(functions: List[DefinitionOpenaiFunction]) -> List[DefinitionBedrockTool]:
-    outputs = []
-    for f in functions:
-        outputs.append(DefinitionBedrockTool(
-            toolSpec=DefinitionBedrockToolSpec(
-                name=f.name,
-                description=f.description,
-                inputSchema=DefinitionBedrockToolInputSchema(json=f.parameters),
-            )
-        ))
-
-    assert len(outputs) == len(functions)
-    return outputs
+    return [d.to_bedrock_tool() for d in functions]

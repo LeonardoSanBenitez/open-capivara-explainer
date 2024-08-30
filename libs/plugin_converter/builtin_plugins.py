@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from libs.utils.connector_llm import DefinitionOpenaiFunction, ParametersOpenaiFunction
+from libs.utils.connector_llm import DefinitionOpenaiFunction, ParametersJsonSchema
 
 
 answer_definition_text = DefinitionOpenaiFunction(
@@ -9,7 +9,7 @@ answer_definition_text = DefinitionOpenaiFunction(
                 " Be sure to return a complete and clear answer, the user will not be able to see any other intermediate messages nor ask for more information."
                 " Never mention intermediate messages or results; if you want to mention something, include it here."
                 " Call this function only once, with everything you want to show to the user.",
-    parameters=ParametersOpenaiFunction(
+    parameters=ParametersJsonSchema(
         type='object',
         properties={
             'text': {
@@ -28,7 +28,7 @@ answer_definition_text_and_code = DefinitionOpenaiFunction(
                 " Be sure to return a complete and clear answer, the user will not be able to see any other intermediate messages nor ask for more information."
                 " Never mention intermediate messages or results; if you want to mention something, include it here."
                 " Call this function only once, with everything you want to show to the user.",
-    parameters=ParametersOpenaiFunction(
+    parameters=ParametersJsonSchema(
         type='object',
         properties={
             'text': {
@@ -53,7 +53,7 @@ answer_definition_text_and_echart = DefinitionOpenaiFunction(
                 " Be sure to return a complete and clear answer, the user will not be able to see any other intermediate messages nor ask for more information."
                 " Never mention intermediate messages or results; if you want to mention something, include it here."
                 " Call this function only once, with everything you want to show to the user.",
-    parameters=ParametersOpenaiFunction(
+    parameters=ParametersJsonSchema(
         type='object',
         properties={
             'text': {
