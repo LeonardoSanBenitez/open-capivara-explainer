@@ -7,9 +7,8 @@ import pandas as pd
 import os
 import random
 
-from libs.utils.connector_llm import ChatCompletionMessage
+from libs.utils.connector_llm import ChatCompletionMessage, DefinitionOpenaiTool
 from libs.dataset_generator.exporter import DatasetExporterHuggingFace, DatasetExporterLocal
-from libs.utils.prompt_manipulation import DefinitionOpenaiTool
 from libs.plugins.plugin_capital import PluginCapital
 import libs.plugin_converter.semantic_kernel_v0_to_openai_function as semantic_kernel_v0_to_openai_function
 import libs.plugin_converter.openai_function_to_tool as openai_function_to_tool

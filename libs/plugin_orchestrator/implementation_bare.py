@@ -2,8 +2,7 @@ from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator,
 from pydantic import model_validator, computed_field
 
 
-from libs.utils.connector_llm import ChatCompletionMessage, ChatCompletionMessageResponse, ChatCompletionMessageResponsePart
-from libs.utils.prompt_manipulation import DefinitionOpenaiTool
+from libs.utils.connector_llm import ChatCompletionMessage, ChatCompletionMessageResponse, ChatCompletionMessageResponsePart, DefinitionOpenaiTool
 from libs.utils.json_resilient import json_loads_resilient
 from libs.plugin_orchestrator.implementation_tool import OrchestratorWithTool, logger
 

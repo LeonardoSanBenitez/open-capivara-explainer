@@ -1,5 +1,5 @@
 from typing import List, Tuple, Union, Dict, Optional
-from libs.utils.prompt_manipulation import DefinitionOpenaiFunction, DefinitionOpenaiTool
+from libs.utils.connector_llm import DefinitionOpenaiFunction, DefinitionOpenaiTool
 
 
 def generate_definitions(functions: List[DefinitionOpenaiFunction]) -> List[DefinitionOpenaiTool]:

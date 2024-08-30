@@ -1,10 +1,9 @@
 from typing import Literal, List, Tuple, Optional, Any, Union, AsyncGenerator, Generator
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from functools import cached_property
 from abc import ABC
 import json
 import openai
-from libs.utils.prompt_manipulation import DefinitionOpenaiTool
 from libs.utils.logger import get_logger
 
 logger = get_logger('libs.connector_llm')
@@ -12,13 +11,36 @@ logger = get_logger('libs.connector_llm')
 '''
 TODO:
 
-This is an openai-like client for calling LLMs: it behaves exactly/similar to the openai python client, but it supports other providers.
+This is an openai-like client for accessing LLMs: it behaves exactly/similar to the openai python client, but it supports other providers.
 
 Currently supported providers:
 * OpenAI
 * Azure openAI
 * LlamaCPP
+* Bedrock
+
+Native function calling is only supported int he following providers:
+* OpenAI
+* Azure openAI
 * Bedrock (work in progress)
+
+
+# Guiding principles
+
+Value simplicity over full compatibility.
+
+A connector implements the class class ConnectorLLM
+In a nutshell, its methods are named like:
+`<api>_<stream-or-not>_<async-or-not>`
+where api can be chat_completion, completion, or embedding_one or embedding_batch
+
+Capabilities are what the model is _capable_ of doing, regardless if you use that or not.
+Is not provider specific: the capabilities of all providers is described in the same manner.
+We aim to provide a comprehensive mapping of the capabilities of each provider and model.
+
+Hyperparameter are how you _want_ the model to do.
+Are provider-specific.
+When appliable, we check if your hyperpameter are possible given the capabilities.
 
 
 # Known limitations
@@ -33,13 +55,27 @@ Incomplete mapping model->capabilities
 
 Incomplete hyperparameter support
 
-Tool calling only supported at OpenAI (even though bedrock supports it too)
-
-network failures or other random failures
+network failures or other random failures not handled
 
 We do not check if the current model is able to calculate embeddings (and similarly, we assume all models can do text completion and chat completion).
 This should be checked in the factory and described in the capabilities.
 '''
+
+
+class ChatCompletionMessage(BaseModel):
+    role: str = 'assistant'
+    content: str
+
+    def to_bedrock_normal(self) -> dict:
+        return {
+            'role': self.role,
+            'content': [{'text': self.content}]
+        }
+
+    def to_bedrock_system(self) -> dict:
+        return {
+            'text': self.content
+        }
 
 
 class Capabilities(BaseModel):
@@ -49,9 +85,9 @@ class Capabilities(BaseModel):
     token_limit_input: int = 2048
     token_limit_output: Optional[int] = None
 
-###
 
-
+#############################################
+# Models - Hyperparameters
 class Hyperparameters(BaseModel, ABC):
     pass
 
@@ -77,10 +113,12 @@ class HyperparametersLlamaCPP(Hyperparameters):
 
 class HyperparametersBedrock(Hyperparameters):
     maxTokens: Optional[int] = None
+    # ToolChoice; only supported by Anthropic Claude 3 models and by Mistral AI Mistral Large; https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolChoice.html
+    # any (same as openai's required), auto, or the one specific tool the model is allowed to call
 
-###
 
-
+#############################################
+# Models - Credentials
 class Credentials(BaseModel, ABC):
     pass
 
@@ -99,23 +137,51 @@ class CredentialsBedrock(Credentials):
     aws_secret_access_key: Optional[str] = None
 
 
-###
+#############################################
+# Models - Tools
+class ParametersOpenaiFunction(BaseModel):
+    type: str
+    properties: dict
+    required: List[str]
+    additionalProperties: bool = False
 
 
-class ChatCompletionMessage(BaseModel):
-    role: str = 'assistant'
-    content: str
+class DefinitionOpenaiFunction(BaseModel):
+    name: str
+    description: str
+    parameters: ParametersOpenaiFunction
+    strict: bool = True
 
-    def to_bedrock_normal(self) -> dict:
-        return {
-            'role': self.role,
-            'content': [{'text': self.content}]
-        }
 
-    def to_bedrock_system(self) -> dict:
-        return {
-            'text': self.content
-        }
+class DefinitionOpenaiTool(BaseModel):
+    type: Literal['function']
+    function: DefinitionOpenaiFunction
+
+
+class BaseModelAliased(BaseModel):
+    def dict(self, **kwargs):
+        kwargs.setdefault("by_alias", True)
+        return super().dict(**kwargs)
+
+    def json(self, **kwargs):
+        kwargs.setdefault("by_alias", True)
+        return super().json(**kwargs)
+
+
+class DefinitionBedrockToolInputSchema(BaseModelAliased):
+    # Bedrock expects the name "json", but that name is reserved in pydantic
+    # So we do this worksaround of overwritting the exporters dict() and json() to always use the alias
+    json_data: ParametersOpenaiFunction = Field(..., alias="json")
+
+
+class DefinitionBedrockToolSpec(BaseModelAliased):
+    name: str  # Length Constraints: Minimum length of 1. Maximum length of 64. Pattern: ^[a-zA-Z][a-zA-Z0-9_]*$
+    description: str  # Length Constraints: Minimum length of 1.
+    inputSchema: DefinitionBedrockToolInputSchema
+
+
+class DefinitionBedrockTool(BaseModelAliased):
+    toolSpec: DefinitionBedrockToolSpec
 
 
 #############################################
@@ -254,7 +320,7 @@ class ConnectorLLM(BaseModel, ABC):
 class ConnectorLLMBedrock(ConnectorLLM):
     capabilities: Capabilities
     hyperparameters: HyperparametersBedrock
-    credentials: Credentials
+    credentials: CredentialsBedrock
     modelname: str
 
     @computed_field  # type: ignore
@@ -465,6 +531,7 @@ def factory_create_connector_llm(
     # Provider models and versions documentation
     https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#gpt-4
     https://aws.amazon.com/bedrock/claude/
+    https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html#conversation-inference-supported-models-features
     '''
     if 'openai' in provider:
         capabilities = Capabilities()
@@ -515,6 +582,7 @@ def factory_create_connector_llm(
     elif provider == 'bedrock':
         # Actually, tool_call IS supported
         # We just had to adapt the syntax
+        assert isinstance(credentials, CredentialsBedrock)
         capabilities = Capabilities()
         if 'claude-3-5-sonnet' in modelname:
             capabilities.token_limit_input = 200000 - 4096

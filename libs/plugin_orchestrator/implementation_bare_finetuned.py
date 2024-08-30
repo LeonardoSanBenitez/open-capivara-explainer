@@ -1,8 +1,7 @@
 from typing import Dict, Callable, Optional, List, Any, Literal, AsyncGenerator, Tuple
 from pydantic import model_validator, computed_field
 
-from libs.utils.connector_llm import ConnectorLLM, ChatCompletionMessage, ChatCompletionMessageResponse, OpenaiFunctionCall
-from libs.utils.prompt_manipulation import DefinitionOpenaiTool
+from libs.utils.connector_llm import ConnectorLLM, ChatCompletionMessage, ChatCompletionMessageResponse, OpenaiFunctionCall, DefinitionOpenaiTool
 from libs.utils.json_resilient import json_loads_resilient
 from libs.plugin_orchestrator.implementation_bare import OrchestratorBare, logger
 

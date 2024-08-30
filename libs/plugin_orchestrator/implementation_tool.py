@@ -15,9 +15,9 @@ from libs.utils.connector_llm import (
     OpenaiFunctionCall,
     ChatCompletionMessageResponsePart,
     OpenAIToolCallPart,
-    OpenaiFunctionCallPart
+    OpenaiFunctionCallPart,
+    DefinitionOpenaiTool
 )
-from libs.utils.prompt_manipulation import DefinitionOpenaiTool
 from libs.utils.json_resilient import json_loads_resilient
 
 

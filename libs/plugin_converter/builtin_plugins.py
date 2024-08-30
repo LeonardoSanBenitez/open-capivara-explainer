@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from libs.utils.prompt_manipulation import DefinitionOpenaiFunction, ParametersOpenaiFunction
+from libs.utils.connector_llm import DefinitionOpenaiFunction, ParametersOpenaiFunction
 
 
 answer_definition_text = DefinitionOpenaiFunction(

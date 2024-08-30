@@ -4,30 +4,6 @@ import pandas as pd
 from pydantic import BaseModel
 
 
-###############################
-# Models
-class ParametersOpenaiFunction(BaseModel):
-    type: str
-    properties: dict
-    required: List[str]
-    additionalProperties: bool = False
-
-
-class DefinitionOpenaiFunction(BaseModel):
-    name: str
-    description: str
-    parameters: ParametersOpenaiFunction
-    strict: bool = True
-
-
-class DefinitionOpenaiTool(BaseModel):
-    type: Literal['function']
-    function: DefinitionOpenaiFunction
-
-
-###############################
-
-
 def count_message_tokens(
     messages: List, model: str = "gpt-3.5-turbo-0301"
 ) -> int:
